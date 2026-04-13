@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && wrangler dev",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "artplayer": "^5.4.0",
@@ -20,9 +23,11 @@
     "tough-cookie": "^6.0.1"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.19.1",
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4",
+    "wrangler": "^4.82.1"
   }
 }

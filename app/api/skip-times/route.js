@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
 
 // Mock skip times for testing purposes
 const MOCK_SKIP_TIMES = {
@@ -18,15 +16,14 @@ const ED_TYPES = new Set(['ed', 'mixed-ed']);
 
 async function loadLocalSkipTimes() {
   try {
-    const configPath = path.join(process.cwd(), 'skip-times-config.json');
-    const data = await fs.readFile(configPath, 'utf-8');
+    const data = process.env.SKIP_TIMES_CONFIG_JSON || '{}';
     const config = JSON.parse(data);
-    console.log(`[SkipTimes] Loaded local config with ${Object.keys(config).filter(k => k !== 'comment').length} anime`);
+    if (Object.keys(config).length) {
+      console.log(`[SkipTimes] Loaded env config with ${Object.keys(config).filter(k => k !== 'comment').length} anime`);
+    }
     return config;
   } catch (e) {
-    if (e?.code !== 'ENOENT') {
-      console.log('[SkipTimes] Error reading local config:', e.message);
-    }
+    console.log('[SkipTimes] Error parsing SKIP_TIMES_CONFIG_JSON:', e.message);
     return {};
   }
 }
