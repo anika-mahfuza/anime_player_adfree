@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import AnimePlayer from '@/components/AnimePlayer';
 import { useWatchProgress, getWatchSequence } from '@/hooks/useWatchProgress';
+import { apiUrl } from '@/lib/apiBase';
 import {
   Play, ChevronLeft, Star, Tv, Calendar, Loader2,
   AlertCircle, List, ChevronRight, Clock, RotateCcw, X,
@@ -15,7 +16,7 @@ import {
 
 async function anilist(query, variables = {}) {
   try {
-    const r = await fetch('/api/anilist', {
+    const r = await fetch(apiUrl('/api/anilist'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables }),
@@ -72,7 +73,7 @@ async function fetchSkipTimes({ malId, episode, episodeLengthSeconds, candidateM
     const useMock = new URLSearchParams(window.location.search).get('mock') === 'true';
     if (useMock) params.set('mock', 'true');
 
-    const res = await fetch(`/api/skip-times?${params.toString()}`);
+    const res = await fetch(apiUrl(`/api/skip-times?${params.toString()}`));
     if (!res.ok) return null;
     const data = await res.json();
     console.log(
@@ -110,7 +111,7 @@ async function fetchStreamUrl(titles, episode) {
   });
   if (altTitles) query.set('altTitles', altTitles);
 
-  const res = await fetch(`/api/stream?${query.toString()}`);
+  const res = await fetch(apiUrl(`/api/stream?${query.toString()}`));
   const json = await res.json();
   if (!res.ok || json.error) throw new Error(json.error ?? 'Stream fetch failed');
   return json.streamUrl;

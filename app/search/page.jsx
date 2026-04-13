@@ -4,11 +4,12 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Star, Play, Search, X, Loader2, ArrowLeft, Tv, Clapperboard } from 'lucide-react';
+import { apiUrl } from '@/lib/apiBase';
 
 const AL = 'https://graphql.anilist.co';
 async function anilist(query, variables = {}) {
   try {
-    const r = await fetch('/api/anilist', {
+    const r = await fetch(apiUrl('/api/anilist'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables }),

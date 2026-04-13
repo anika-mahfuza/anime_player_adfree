@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': '*',
+};
+
 const cache = new Map();
 const CACHE_CLEANUP = 300000; // 5 minutes
 const MAX_CACHE_SIZE = 100;
@@ -23,7 +29,7 @@ export async function POST(request) {
     const cached = cache.get(cacheKey);
     if (cached && Date.now() < cached.expiry) {
       return NextResponse.json(cached.data, { 
-        headers: { 'X-Cache': 'HIT' }
+        headers: { ...CORS, 'X-Cache': 'HIT' }
       });
     }
     
@@ -50,12 +56,16 @@ export async function POST(request) {
     }
     
     return NextResponse.json(data, { 
-      headers: { 'X-Cache': 'MISS' }
+      headers: { ...CORS, 'X-Cache': 'MISS' }
     });
   } catch (err) {
     console.error('AniList proxy error:', err.message);
-    return NextResponse.json({ errors: [{ message: err.message }] }, { status: 500 });
+    return NextResponse.json({ errors: [{ message: err.message }] }, { status: 500, headers: CORS });
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS });
 }
 
 setInterval(() => {

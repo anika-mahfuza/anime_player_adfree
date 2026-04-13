@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Star, Tv, Play, Search, X, Loader2, TrendingUp, Trophy, ChevronRight, ChevronLeft, CalendarDays, Flame, Sparkles } from 'lucide-react';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
+import { apiUrl } from '@/lib/apiBase';
 
 // ── AniList ──────────────────────────────────────────────────────────────────
 const HOME_CACHE_KEY = 'home_cache';
@@ -36,7 +37,7 @@ function setHomeCache(data) {
 
 async function anilist(query, variables = {}) {
   try {
-    const r = await fetch('/api/anilist', {
+    const r = await fetch(apiUrl('/api/anilist'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables }),

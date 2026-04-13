@@ -411,7 +411,8 @@ export async function GET(request) {
       throw new Error('Could not extract video URL');
     }
 
-    const proxyUrl = `/api/hls?url=${encodeURIComponent(m3u8Url)}&ref=${encodeURIComponent('https://vibeplayer.site')}`;
+    const origin = new URL(request.url).origin;
+    const proxyUrl = `${origin}/api/hls?url=${encodeURIComponent(m3u8Url)}&ref=${encodeURIComponent('https://vibeplayer.site')}`;
     return NextResponse.json({ streamUrl: proxyUrl });
   } catch (err) {
     console.error('[stream] ❌', err.message);
