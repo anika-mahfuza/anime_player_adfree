@@ -6,11 +6,11 @@ import Link from 'next/link';
 import AnimePlayer from '@/components/AnimePlayer';
 import { useWatchProgress, getWatchSequence } from '@/hooks/useWatchProgress';
 import { apiUrl } from '@/lib/apiBase';
-import { watchHref } from '@/lib/routes';
+import { animeHref, watchHref } from '@/lib/routes';
 import {
   Play, ChevronLeft, Star, Tv, Calendar, Loader2,
-  AlertCircle, List, ChevronRight, Clock, RotateCcw, X,
-  Clapperboard, Film, Layers
+  AlertCircle, List, ChevronRight, Clock, RotateCcw,
+  Clapperboard
 } from 'lucide-react';
 
 // ── APIs ──────────────────────────────────────────────────────────────────────
@@ -63,13 +63,22 @@ const ANIME_QUERY = `
 `;
 
 // Fetch skip times from our server-side API (avoids CORS issues)
-async function fetchSkipTimes({ malId, episode, episodeLengthSeconds, candidateMalIds = [] }) {
+async function fetchSkipTimes({
+  malId,
+  anilistId,
+  episode,
+  episodeLengthSeconds,
+  candidateMalIds = [],
+  candidateAnilistIds = [],
+}) {
   try {
     const params = new URLSearchParams();
     params.set('malId', String(malId));
+    if (anilistId) params.set('anilistId', String(anilistId));
     params.set('episode', String(episode));
     if (episodeLengthSeconds) params.set('episodeLength', String(Math.round(episodeLengthSeconds)));
     if (candidateMalIds.length) params.set('candidateMalIds', candidateMalIds.join(','));
+    if (candidateAnilistIds.length) params.set('candidateAnilistIds', candidateAnilistIds.join(','));
 
     const useMock = new URLSearchParams(window.location.search).get('mock') === 'true';
     if (useMock) params.set('mock', 'true');
@@ -142,31 +151,28 @@ function formatSeason(s, y) {
   return [season, y].filter(Boolean).join(' ');
 }
 
-// Build ordered seasons list from relations
-function buildSeasons(anime) {
-  const KEEP_TYPES = ['SEQUEL', 'PREQUEL', 'SIDE_STORY', 'SPIN_OFF', 'ALTERNATIVE'];
-  const current = {
-    id: anime.id, alId: anime.id, title: anime.title,
-    coverImage: anime.coverImage, seasonYear: anime.seasonYear,
-    episodes: anime.episodes, status: anime.status, isCurrent: true,
-  };
-
-  const related = anime.relations?.edges
-    ?.filter(e =>
-      KEEP_TYPES.includes(e.relationType) &&
-      e.node.type === 'ANIME' &&
-      e.node.id &&
-      ['TV', 'TV_SHORT', 'ONA', 'OVA', 'SPECIAL', 'MOVIE'].includes(e.node.format)
-    )
-    .map(e => ({
-      id: e.node.id, alId: e.node.id, title: e.node.title,
-      coverImage: e.node.coverImage, seasonYear: e.node.seasonYear,
-      episodes: e.node.episodes, status: e.node.status,
-      relationType: e.relationType, isCurrent: false,
-    })) ?? [];
-
-  return [current, ...related].sort((a, b) => (a.seasonYear ?? 9999) - (b.seasonYear ?? 9999));
+function formatRelationType(relationType) {
+  return {
+    CURRENT: 'Current Season',
+    PREQUEL: 'Prequel',
+    SEQUEL: 'Sequel',
+    SIDE_STORY: 'Side Story',
+    SPIN_OFF: 'Spin-Off',
+    ALTERNATIVE: 'Alternative',
+    COMPILATION: 'Compilation',
+    OTHER: 'Related',
+  }[relationType] ?? 'Related';
 }
+
+const SKIP_TIME_FALLBACK_RELATIONS = new Set([
+  'PREQUEL',
+  'SEQUEL',
+  'SIDE_STORY',
+  'SPIN_OFF',
+  'ALTERNATIVE',
+  'COMPILATION',
+  'OTHER',
+]);
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 function Badge({ children, className = '' }) {
@@ -212,16 +218,20 @@ function EpisodeButton({ ep, active, loading, onClick }) {
 function SeasonCard({ season, isCurrent }) {
   const title = mediaTitle(season);
   const img = season.coverImage?.large;
+  const relationLabel = formatRelationType(season.relationType);
+  const formatLabel = season.format ? season.format.replace(/_/g, ' ') : null;
   return (
     <Link
-      href={watchHref(season.id)}
+      href={animeHref(season.id)}
       className={`flex items-center gap-2.5 p-2 rounded-lg transition-all group
                   ${isCurrent ? 'bg-rose-600/20 border border-rose-500/30' : 'hover:bg-white/5 border border-transparent'}`}
     >
       {img && <img src={img} alt={title} className="w-9 h-12 object-cover rounded shrink-0" />}
       <div className="min-w-0 flex-1">
         <p className={`text-xs font-semibold truncate ${isCurrent ? 'text-rose-300' : 'text-gray-300 group-hover:text-white'}`}>{title}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
+        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+          <span className={`text-[10px] ${isCurrent ? 'text-rose-200/80' : 'text-gray-500'}`}>{relationLabel}</span>
+          {formatLabel && <span className="text-gray-600 text-[10px]">{formatLabel}</span>}
           {season.seasonYear && <span className="text-gray-600 text-[10px]">{season.seasonYear}</span>}
           {season.episodes && <span className="text-gray-600 text-[10px]">{season.episodes} eps</span>}
         </div>
@@ -238,19 +248,18 @@ function WatchPageContent() {
 
   const [anime, setAnime] = useState(null);
   const [episodes, setEpisodes] = useState([]);
-  const [seasons, setSeasons] = useState([]);
   const [activeEp, setActiveEp] = useState(1);
   const [streamUrl, setStreamUrl] = useState('');
   const [metaLoading, setMetaLoading] = useState(true);
   const [streamLoading, setStreamLoading] = useState(false);
   const [streamError, setStreamError] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [skipTimes, setSkipTimes] = useState(null);
   const [hasStarted, setHasStarted] = useState(false);
   const [videoDurationSec, setVideoDurationSec] = useState(null);
 
   const epRefs = useRef({});
+  const episodesSectionRef = useRef(null);
   const { updateProgress, getProgress } = useWatchProgress();
 
 // ── Load metadata ──────────────────────────────────────────────────────────
@@ -276,7 +285,6 @@ function WatchPageContent() {
       const media = alData?.Media;
       if (!media) throw new Error('Anime not found');
       setAnime(media);
-      setSeasons(buildSeasons(media));
 
       // Check for saved progress
       const saved = getProgress(media.id);
@@ -367,47 +375,45 @@ function WatchPageContent() {
     epRefs.current[activeEp]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [activeEp]);
 
+  // Clear skip times only when episode/anime changes — NOT on duration update
   useEffect(() => {
-    if (!sidebarOpen) return;
+    setSkipTimes(null);
+  }, [anime?.id, activeEp]);
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setSidebarOpen(false);
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [sidebarOpen]);
-
-  // Fetch skip times when episode or anime changes
+  // Fetch skip times only after the player reports the real stream duration.
   useEffect(() => {
-    if (!anime?.idMal || !activeEp) {
-      setSkipTimes(null);
-      return;
-    }
+    if (!anime?.idMal || !activeEp || !hasStarted || !streamUrl || !videoDurationSec) return;
 
     const candidateMalIds = [
       anime.idMal,
-      ...(anime.relations?.edges?.map(edge => edge?.node?.idMal) ?? []),
+      ...(anime.relations?.edges
+        ?.filter((edge) =>
+          SKIP_TIME_FALLBACK_RELATIONS.has(edge?.relationType) &&
+          edge?.node?.type === 'ANIME' &&
+          edge?.node?.idMal
+        )
+        .map((edge) => edge.node.idMal) ?? []),
+    ].filter(Boolean);
+    const candidateAnilistIds = [
+      anime.id,
+      ...(anime.relations?.edges
+        ?.filter((edge) =>
+          SKIP_TIME_FALLBACK_RELATIONS.has(edge?.relationType) &&
+          edge?.node?.type === 'ANIME' &&
+          edge?.node?.id
+        )
+        .map((edge) => edge.node.id) ?? []),
     ].filter(Boolean);
 
-    const fallbackDurationSec = Math.round((anime.duration || 24) * 60);
-    const requestedLength = videoDurationSec || fallbackDurationSec;
-
     let cancelled = false;
-    setSkipTimes(null);
 
     fetchSkipTimes({
       malId: anime.idMal,
+      anilistId: anime.id,
       episode: activeEp,
-      episodeLengthSeconds: requestedLength,
+      episodeLengthSeconds: videoDurationSec,
       candidateMalIds,
+      candidateAnilistIds,
     }).then(payload => {
       if (cancelled) return;
       const times = payload?.skipTimes || null;
@@ -418,7 +424,7 @@ function WatchPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [anime, activeEp, videoDurationSec]);
+  }, [anime, activeEp, hasStarted, streamUrl, videoDurationSec]);
 
   const handleDurationKnown = useCallback((seconds) => {
     if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return;
@@ -516,6 +522,7 @@ function WatchPageContent() {
   const nextEpisodeData = episodes.find(ep => ep.mal_id === activeEp + 1);
   const savedProgress = anime ? getProgress(anime.id) : null;
   const resumeTimeForActiveEpisode = Number(savedProgress?.episodePositions?.[activeEp] || 0);
+  const watchSequence = getWatchSequence(anime, anime?.relations);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
@@ -557,14 +564,6 @@ function WatchPageContent() {
         </Link>
         <span className="text-white/20">·</span>
         <h1 className="text-sm font-semibold truncate text-gray-100 flex-1">{title}</h1>
-        <span className="text-xs text-gray-500 shrink-0">Ep {activeEp}</span>
-        <button
-          onClick={() => setSidebarOpen(v => !v)}
-          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-          title="Toggle episode list"
-        >
-          <List size={16} />
-        </button>
       </nav>
 
       {/* ── Main layout ── */}
@@ -716,69 +715,31 @@ function WatchPageContent() {
             </div>
           </div>
 
-          {/* Related seasons */}
-          {seasons.length > 1 && (
-            <div className="bg-white/5 rounded-xl p-4 border border-white/5">
-              <h3 className="text-sm font-semibold text-gray-200 mb-3">Watch Order</h3>
-              <div className="flex flex-col gap-2">
-                {seasons.map((s, idx) => (
-                  <Link
-                    key={s.id}
-                    href={watchHref(s.id)}
-                    className={`flex items-center gap-3 p-2 rounded-lg transition-all group
-                                ${s.isCurrent ? 'bg-rose-600/20 border border-rose-500/30' : 'hover:bg-white/5 border border-transparent'}`}
-                  >
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
-                                     ${s.isCurrent ? 'bg-rose-600 text-white' : 'bg-white/10 text-gray-400 group-hover:bg-white/20'}`}>
-                      {idx + 1}
-                    </span>
-                    {s.coverImage?.large && (
-                      <img src={s.coverImage.large} alt="" className="w-8 h-10 object-cover rounded" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-xs font-semibold truncate ${s.isCurrent ? 'text-rose-300' : 'text-gray-300 group-hover:text-white'}`}>
-                        {mediaTitle(s)}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {s.seasonYear && <span className="text-gray-600 text-[10px]">{s.seasonYear}</span>}
-                        {s.episodes && <span className="text-gray-600 text-[10px]">{s.episodes} eps</span>}
-                      </div>
-                    </div>
-                    {s.isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0 animate-pulse" />}
-                  </Link>
-                ))}
+          <section
+            ref={episodesSectionRef}
+            className="bg-white/5 rounded-xl border border-white/5 overflow-hidden"
+          >
+            <div className="px-4 py-3 border-b border-white/10 flex flex-wrap items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <List size={16} className="text-rose-400" />
+                  <h3 className="text-sm font-semibold text-gray-100">Episodes</h3>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Episode {activeEp} selected {episodes.length > 0 ? `- ${episodes.length} total` : ''}
+                </p>
               </div>
-            </div>
-          )}
-        </div>
-
-      </div>
-
-      {/* ── Episode overlay drawer ── */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-[70]">
-          <button
-            aria-label="Close episodes drawer"
-            onClick={() => setSidebarOpen(false)}
-            className="absolute inset-0 bg-black/65 backdrop-blur-[1px]"
-          />
-
-          <aside className="absolute right-0 top-0 h-full w-full max-w-sm border-l border-white/10 bg-gray-950 flex flex-col overflow-hidden shadow-2xl shadow-black/50">
-            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-gray-100">Episodes</span>
-                <span className="text-xs text-gray-500">{episodes.length} total</span>
-              </div>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                title="Close episode list"
-              >
-                <X size={16} />
-              </button>
+              {episodes.length > 1 && (
+                <button
+                  onClick={() => epRefs.current[activeEp]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-gray-300 hover:text-white transition-colors"
+                >
+                  Jump to current
+                </button>
+              )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            <div className="max-h-[26rem] overflow-y-auto p-2 space-y-1">
               {episodes.length === 0 ? (
                 <div className="text-center text-gray-600 text-xs py-8">No episode data</div>
               ) : episodes.map(ep => (
@@ -792,9 +753,30 @@ function WatchPageContent() {
                 </div>
               ))}
             </div>
-          </aside>
+          </section>
+
+          {watchSequence.length > 1 && (
+            <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+              <div className="flex items-center gap-2 mb-1">
+                <Clapperboard size={16} className="text-rose-400" />
+                <h3 className="text-sm font-semibold text-gray-200">Seasons</h3>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">Main seasons, OVAs, movies, and side stories in watch order.</p>
+              <div className="flex flex-col gap-2">
+                {watchSequence.map((item) => (
+                  <SeasonCard
+                    key={item.id}
+                    season={item}
+                    isCurrent={item.id === anime.id}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+
+      </div>
+
     </div>
   );
 }

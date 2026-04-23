@@ -7,6 +7,9 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   output: 'export',
   allowedDevOrigins: ['192.168.0.100'],
+  turbopack: {
+    root: path.join(projectRoot, '..'),
+  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'cdn.myanimelist.net' },

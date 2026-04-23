@@ -44,6 +44,37 @@ export default function AnimePlayer({
     skipTimesRef.current = skipTimes;
   }, [skipTimes]);
 
+  // ── FIX: reconcile state machine when skipTimes arrive late ─────────────
+  // If the player is already inside (or past) a skip window when skipTimes
+  // arrive, the normal timeupdate handler won't fire the transition because
+  // it only moves idle→active while time < endTime. We catch that here.
+  useEffect(() => {
+    const art = artRef.current;
+    if (!art || !skipTimes) return;
+    const time = art.currentTime;
+    if (!Number.isFinite(time) || isNaN(time)) return;
+
+    const intro = skipTimes.intro;
+    if (intro?.startTime != null && intro?.endTime != null && introStateRef.current === 'idle') {
+      if (time >= intro.startTime && time < intro.endTime) {
+        introStateRef.current = 'active';
+        setShowSkipIntro(true);
+      } else if (time >= intro.endTime) {
+        introStateRef.current = 'done';
+      }
+    }
+
+    const outro = skipTimes.outro;
+    if (outro?.startTime != null && outro?.endTime != null && outroStateRef.current === 'idle') {
+      if (time >= outro.startTime && time < outro.endTime) {
+        outroStateRef.current = 'active';
+        setShowSkipOutro(true);
+      } else if (time >= outro.endTime) {
+        outroStateRef.current = 'done';
+      }
+    }
+  }, [skipTimes]);
+
   // ── intro/outro state machine ─────────────────────────────────────────────
   //   'idle' → 'active' (button shown) → 'done' (past end or skipped)
   //   reset to 'idle' if user seeks back before start

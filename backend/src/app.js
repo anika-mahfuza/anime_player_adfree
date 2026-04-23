@@ -1,4 +1,5 @@
 import { handleAniList } from './anilist.js';
+import { handleHome } from './home.js';
 import { handleHlsProxy } from './hls.js';
 import { sendJson, sendNoContent } from './http.js';
 import { handleSkipTimes } from './skip-times.js';
@@ -7,6 +8,7 @@ import { getRequestOrigin } from './http.js';
 
 const routes = new Map([
   ['/api/anilist', handleAniList],
+  ['/api/home', handleHome],
   ['/api/hls', handleHlsProxy],
   ['/api/skip-times', handleSkipTimes],
   ['/api/stream', handleStream],

@@ -17,6 +17,8 @@ const mockSkipTimes = {
 
 const openingTypes = new Set(['op', 'mixed-op']);
 const endingTypes = new Set(['ed', 'mixed-ed']);
+const animeSkipIntroTypes = ['Intro', 'Mixed Intro', 'New Intro'];
+const animeSkipOutroTypes = ['Credits', 'Mixed Credits', 'New Credits'];
 
 function normalizeResult(result) {
   const start = Number(result?.interval?.startTime ?? result?.interval?.start_time);
@@ -31,14 +33,66 @@ function normalizeResult(result) {
   };
 }
 
-function asSkipSegment(result, type, offset = 0) {
+function clampToEpisodeLength(value, requestedLengthSec) {
+  const safe = Math.max(0, value);
+  if (!requestedLengthSec) return safe;
+  return Math.min(safe, requestedLengthSec);
+}
+
+function normalizeSegmentWindow(result, type, requestedLengthSec) {
   if (!result) return null;
 
+  const providerLength = parsePositiveNumber(result?.episodeLength);
+  const rawStart = Number(result.startTime);
+  const rawEnd = Number(result.endTime);
+
+  if (!requestedLengthSec || !providerLength || providerLength <= 0) {
+    return {
+      startTime: Number(Math.max(0, rawStart).toFixed(3)),
+      endTime: Number(Math.max(0, rawEnd).toFixed(3)),
+      type,
+    };
+  }
+
+  const segmentLength = rawEnd - rawStart;
+  if (!Number.isFinite(segmentLength) || segmentLength <= 0) {
+    return null;
+  }
+
+  const diff = requestedLengthSec - providerLength;
+  const midpointRatio = ((rawStart + rawEnd) / 2) / providerLength;
+  const durationRatio = requestedLengthSec / providerLength;
+  const distanceFromEnd = providerLength - rawEnd;
+
+  let startTime = rawStart;
+  let endTime = rawEnd;
+  let alignment = 'start';
+
+  if (type === 'outro' || midpointRatio >= 0.7) {
+    endTime = requestedLengthSec - distanceFromEnd;
+    startTime = endTime - segmentLength;
+    alignment = 'end';
+  } else if (type === 'recap' || (midpointRatio > 0.3 && midpointRatio < 0.7)) {
+    startTime = rawStart * durationRatio;
+    endTime = rawEnd * durationRatio;
+    alignment = 'scale';
+  }
+
+  startTime = clampToEpisodeLength(startTime, requestedLengthSec);
+  endTime = clampToEpisodeLength(endTime, requestedLengthSec);
+
+  if (endTime <= startTime) {
+    return null;
+  }
+
   return {
-    startTime: Number((Math.max(0, result.startTime + offset)).toFixed(3)),
-    endTime: Number((Math.max(0, result.endTime + offset)).toFixed(3)),
+    startTime: Number(startTime.toFixed(3)),
+    endTime: Number(endTime.toFixed(3)),
     type,
-    autoOffset: offset !== 0 ? offset : undefined,
+    alignment,
+    autoOffset: alignment === 'end' && diff !== 0 ? Number(diff.toFixed(3)) : undefined,
+    autoScale: alignment === 'scale' ? Number(durationRatio.toFixed(4)) : undefined,
+    providerEpisodeLength: providerLength,
   };
 }
 
@@ -86,6 +140,88 @@ async function fetchAniSkip(malId, episode, episodeLengthSec) {
   };
 }
 
+async function fetchAnimeSkipShows(anilistId) {
+  const query = `
+    query ($serviceId: String!) {
+      findShowsByExternalId(service: ANILIST, serviceId: $serviceId) {
+        id
+        name
+        episodeCount
+        episodes {
+          id
+          season
+          number
+          name
+          timestamps {
+            at
+            type { name }
+          }
+        }
+      }
+    }
+  `;
+
+  const response = await fetchWithTimeout(
+    'https://api.anime-skip.com/graphql',
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Client-ID': 'ZGfO0sMF3eCwLYf8yMSCJjlynwNGRXWE',
+      },
+      body: JSON.stringify({ query, variables: { serviceId: String(anilistId) } }),
+    },
+    15000,
+  );
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = await response.json();
+  return Array.isArray(payload?.data?.findShowsByExternalId)
+    ? payload.data.findShowsByExternalId
+    : [];
+}
+
+function collectAnimeSkipSegments(timestamps, allowedNames) {
+  const relevant = timestamps
+    .filter((timestamp) => allowedNames.includes(String(timestamp?.type?.name || '')))
+    .map((timestamp) => Number(timestamp?.at))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+
+  const segments = [];
+  for (let i = 0; i + 1 < relevant.length; i += 2) {
+    const start = relevant[i];
+    const end = relevant[i + 1];
+    if (end > start) {
+      segments.push({ startTime: start, endTime: end });
+    }
+  }
+
+  return segments;
+}
+
+function pickLongestSegment(segments) {
+  if (!segments.length) return null;
+  return segments.reduce((best, current) => (
+    (current.endTime - current.startTime) > (best.endTime - best.startTime) ? current : best
+  ));
+}
+
+function scoreAnimeSkipShow(show, episodeNumber) {
+  const episode = (show?.episodes || []).find((item) => Number.parseInt(item?.number, 10) === episodeNumber);
+  if (!episode) return -1;
+
+  let score = 0;
+  if (episode.timestamps?.length) score += 40;
+  if (show?.episodeCount) score += Math.min(show.episodeCount, 20);
+  if (show?.name) score += 5;
+  return score;
+}
+
 function buildSkipTimes(results, requestedLengthSec) {
   const intro = pickBestByDuration(
     results.filter((result) => openingTypes.has(result.skipType)),
@@ -100,17 +236,11 @@ function buildSkipTimes(results, requestedLengthSec) {
     requestedLengthSec,
   );
 
-  const getOffset = (bestResult) => {
-    if (!requestedLengthSec || !bestResult?.episodeLength) return 0;
-    const diff = requestedLengthSec - bestResult.episodeLength;
-    return Math.abs(diff) <= 10 ? diff : 0;
-  };
-
   return Object.fromEntries(
     Object.entries({
-      intro: asSkipSegment(intro, 'intro', getOffset(intro)),
-      outro: asSkipSegment(outro, 'outro', getOffset(outro)),
-      recap: asSkipSegment(recap, 'recap', getOffset(recap)),
+      intro: normalizeSegmentWindow(intro, 'intro', requestedLengthSec),
+      outro: normalizeSegmentWindow(outro, 'outro', requestedLengthSec),
+      recap: normalizeSegmentWindow(recap, 'recap', requestedLengthSec),
     }).filter(([, value]) => value),
   );
 }
@@ -162,15 +292,59 @@ async function resolveSkipTimesForId(malId, episodeNumber, episodeLength) {
   };
 }
 
+async function resolveAnimeSkipForId(anilistId, episodeNumber, episodeLength) {
+  if (!anilistId) return null;
+
+  const shows = await fetchAnimeSkipShows(anilistId);
+  if (!shows.length) return null;
+
+  const bestShow = shows.reduce((best, current) => {
+    if (!best) return current;
+    return scoreAnimeSkipShow(current, episodeNumber) > scoreAnimeSkipShow(best, episodeNumber) ? current : best;
+  }, null);
+
+  const episode = (bestShow?.episodes || []).find((item) => Number.parseInt(item?.number, 10) === episodeNumber);
+  if (!episode?.timestamps?.length) return null;
+
+  const referenceLength = episode.timestamps
+    .map((timestamp) => Number(timestamp?.at))
+    .filter((value) => Number.isFinite(value))
+    .reduce((max, value) => Math.max(max, value), 0);
+
+  const introSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipIntroTypes));
+  const outroSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipOutroTypes));
+
+  const skipTimes = Object.fromEntries(
+    Object.entries({
+      intro: introSegment
+        ? normalizeSegmentWindow({ ...introSegment, episodeLength: referenceLength || undefined }, 'intro', episodeLength)
+        : null,
+      outro: outroSegment
+        ? normalizeSegmentWindow({ ...outroSegment, episodeLength: referenceLength || undefined }, 'outro', episodeLength)
+        : null,
+    }).filter(([, value]) => value),
+  );
+
+  if (!Object.keys(skipTimes).length) return null;
+
+  return {
+    id: anilistId,
+    skipTimes,
+    score: (skipTimes.intro ? 25 : 0) + (skipTimes.outro ? 25 : 0) + (bestShow?.episodeCount || 0),
+  };
+}
+
 export async function handleSkipTimes({ req, res, url }) {
   if (req.method !== 'GET') {
     return sendJson(res, 405, { error: 'Method not allowed' }, { Allow: 'GET, OPTIONS' });
   }
 
   const malId = url.searchParams.get('malId');
+  const anilistId = url.searchParams.get('anilistId');
   const episode = url.searchParams.get('episode');
   const episodeLength = parsePositiveNumber(url.searchParams.get('episodeLength'));
   const candidateMalIdsParam = url.searchParams.get('candidateMalIds') || '';
+  const candidateAnilistIdsParam = url.searchParams.get('candidateAnilistIds') || '';
   const useMock = url.searchParams.get('mock') === 'true';
 
   if (!malId || !episode) {
@@ -183,6 +357,11 @@ export async function handleSkipTimes({ req, res, url }) {
     const candidateIds = uniquePositiveIntegers([
       primaryMalId,
       ...candidateMalIdsParam.split(',').map((value) => value.trim()).filter(Boolean),
+    ]);
+    const primaryAnilistId = Number.parseInt(String(anilistId || ''), 10);
+    const candidateAnilistIds = uniquePositiveIntegers([
+      primaryAnilistId,
+      ...candidateAnilistIdsParam.split(',').map((value) => value.trim()).filter(Boolean),
     ]);
 
     if (useMock) {
@@ -217,6 +396,25 @@ export async function handleSkipTimes({ req, res, url }) {
     }
 
     if (!best) {
+      let bestAnimeSkip = null;
+
+      for (const id of candidateAnilistIds) {
+        const resolved = await resolveAnimeSkipForId(id, episodeNumber, episodeLength);
+        if (!resolved) continue;
+        if (!bestAnimeSkip || resolved.score > bestAnimeSkip.score) {
+          bestAnimeSkip = resolved;
+        }
+      }
+
+      if (bestAnimeSkip) {
+        return sendJson(res, 200, {
+          skipTimes: bestAnimeSkip.skipTimes,
+          source: 'anime-skip',
+          resolvedMalId: primaryMalId,
+          resolvedAnilistId: bestAnimeSkip.id,
+        });
+      }
+
       return sendJson(res, 200, {
         skipTimes: null,
         source: 'none',

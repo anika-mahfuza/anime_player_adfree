@@ -195,6 +195,13 @@ export function getWatchSequence(anime, relations) {
   allItems.push({
     id: anime.id,
     title: anime.title,
+    coverImage: anime.coverImage,
+    seasonYear: anime.seasonYear,
+    episodes: anime.episodes,
+    status: anime.status,
+    format: anime.format,
+    relationType: 'CURRENT',
+    isCurrent: true,
     type: 'current',
     order: 0
   });
@@ -211,6 +218,12 @@ export function getWatchSequence(anime, relations) {
       allItems.unshift({
         id: e.node.id,
         title: e.node.title,
+        coverImage: e.node.coverImage,
+        seasonYear: e.node.seasonYear,
+        episodes: e.node.episodes,
+        status: e.node.status,
+        format: e.node.format,
+        isCurrent: false,
         type: 'prequel',
         relationType: e.relationType,
         order: -1
@@ -225,6 +238,12 @@ export function getWatchSequence(anime, relations) {
       allItems.push({
         id: e.node.id,
         title: e.node.title,
+        coverImage: e.node.coverImage,
+        seasonYear: e.node.seasonYear,
+        episodes: e.node.episodes,
+        status: e.node.status,
+        format: e.node.format,
+        isCurrent: false,
         type: e.relationType === 'SEQUEL' ? 'sequel' : 'side',
         relationType: e.relationType,
         order

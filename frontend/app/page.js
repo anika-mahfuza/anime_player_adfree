@@ -6,33 +6,29 @@ import { useRouter } from 'next/navigation';
 import { Star, Tv, Play, Search, X, Loader2, TrendingUp, Trophy, ChevronRight, ChevronLeft, CalendarDays, Flame, Sparkles } from 'lucide-react';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
 import { apiUrl } from '@/lib/apiBase';
-import { watchHref } from '@/lib/routes';
+import { animeHref, watchHref } from '@/lib/routes';
 
 // ── AniList ──────────────────────────────────────────────────────────────────
-const HOME_CACHE_KEY = 'home_cache';
-const HOME_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+// Two separate caches — critical can be served while secondary still loads
+const CRITICAL_CACHE_KEY = 'home_critical_v2';
+const SECONDARY_CACHE_KEY = 'home_secondary_v2';
+const HOME_CACHE_TTL_MS = 15 * 60 * 1000;
 
-function getHomeCache() {
+function getCache(key) {
   if (typeof window === 'undefined') return null;
   try {
-    const stored = sessionStorage.getItem(HOME_CACHE_KEY);
+    const stored = sessionStorage.getItem(key);
     if (!stored) return null;
     const { data, expiry } = JSON.parse(stored);
-    if (Date.now() > expiry) {
-      sessionStorage.removeItem(HOME_CACHE_KEY);
-      return null;
-    }
+    if (Date.now() > expiry) { sessionStorage.removeItem(key); return null; }
     return data;
   } catch { return null; }
 }
 
-function setHomeCache(data) {
+function setCache(key, data) {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.setItem(HOME_CACHE_KEY, JSON.stringify({
-      data,
-      expiry: Date.now() + HOME_CACHE_TTL
-    }));
+    sessionStorage.setItem(key, JSON.stringify({ data, expiry: Date.now() + HOME_CACHE_TTL_MS }));
   } catch {}
 }
 
@@ -56,9 +52,11 @@ async function anilist(query, variables = {}) {
   }
 }
 
-const HOME_QUERY = `
+// ── Queries ────────────────────────────────────────────────────────────────────────────
+// Critical: loads first — powers the hero + first 2 shelves. Small payload.
+const CRITICAL_QUERY = `
 query {
-  trending: Page(perPage: 24) {
+  trending: Page(perPage: 12) {
     media(sort: TRENDING_DESC, type: ANIME, isAdult: false) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -66,8 +64,7 @@ query {
       episodes meanScore genres status format nextAiringEpisode { episode }
     }
   }
-
-  airing: Page(perPage: 24) {
+  airing: Page(perPage: 12) {
     media(status: RELEASING, sort: POPULARITY_DESC, type: ANIME, isAdult: false, format_in: [TV, TV_SHORT]) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -75,8 +72,12 @@ query {
       episodes meanScore genres status format nextAiringEpisode { episode }
     }
   }
+}`;
 
-  popular: Page(perPage: 24) {
+// Secondary: loads in background after critical is painted.
+const SECONDARY_QUERY = `
+query {
+  popular: Page(perPage: 18) {
     media(sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -84,8 +85,7 @@ query {
       episodes meanScore genres status format nextAiringEpisode { episode }
     }
   }
-
-  topRated: Page(perPage: 24) {
+  topRated: Page(perPage: 18) {
     media(sort: SCORE_DESC, type: ANIME, isAdult: false, episodes_greater: 1) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -93,8 +93,7 @@ query {
       episodes meanScore genres status format nextAiringEpisode { episode }
     }
   }
-
-  upcoming: Page(perPage: 24) {
+  upcoming: Page(perPage: 12) {
     media(status: NOT_YET_RELEASED, sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -102,8 +101,7 @@ query {
       episodes meanScore genres status format nextAiringEpisode { episode }
     }
   }
-
-  movies: Page(perPage: 24) {
+  movies: Page(perPage: 12) {
     media(format: MOVIE, sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -111,8 +109,7 @@ query {
       episodes meanScore genres status format nextAiringEpisode { episode }
     }
   }
-
-  action: Page(perPage: 24) {
+  action: Page(perPage: 12) {
     media(genre_in: ["Action"], sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -120,8 +117,7 @@ query {
       episodes meanScore genres status format nextAiringEpisode { episode }
     }
   }
-
-  romance: Page(perPage: 24) {
+  romance: Page(perPage: 12) {
     media(genre_in: ["Romance"], sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -129,8 +125,7 @@ query {
       episodes meanScore genres status format nextAiringEpisode { episode }
     }
   }
-
-  fantasy: Page(perPage: 24) {
+  fantasy: Page(perPage: 12) {
     media(genre_in: ["Fantasy"], sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -138,8 +133,7 @@ query {
       episodes meanScore genres status format nextAiringEpisode { episode }
     }
   }
-
-  comedy: Page(perPage: 24) {
+  comedy: Page(perPage: 12) {
     media(genre_in: ["Comedy"], sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
       idMal id bannerImage season seasonYear
       title { romaji english }
@@ -162,7 +156,7 @@ query ($s: String) {
 function mediaTitle(m) { return m.title?.english || m.title?.romaji || ''; }
 
 function mediaHref(m) {
-  if (m?.id) return watchHref(m.id);
+  if (m?.id) return animeHref(m.id);
   const title = mediaTitle(m);
   if (title) return `/search?q=${encodeURIComponent(title)}`;
   return '/';
@@ -692,7 +686,7 @@ function HeroSpotlight({ list }) {
                       href={mediaHref(anime)}
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition-colors"
                     >
-                      <Play size={14} fill="currentColor" /> Watch Now
+                      <Play size={14} fill="currentColor" /> View Details
                     </Link>
                     <Link
                       href={`/search?q=${encodeURIComponent(title)}`}
@@ -839,11 +833,18 @@ const FILTER_CHIPS = [
 ];
 
 export default function HomePage() {
-  const [data, setData]     = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState('');
+  const [data, setData]       = useState(null);
+  const [secondary, setSecondary] = useState(null);
+  const [loading, setLoading]  = useState(true);  // true until critical ready
+  const [error, setError]      = useState('');
   const [provider, setProvider] = useState('AniList');
   const [activeTopics, setActiveTopics] = useState([]);
+
+  // Merge critical + secondary into one data object for existing consumers
+  const mergedData = useMemo(() => {
+    if (!data) return null;
+    return { ...data, ...(secondary || {}) };
+  }, [data, secondary]);
 
   const toggleTopic = useCallback((topicKey) => {
     setActiveTopics((prev) => (
@@ -858,34 +859,53 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    // Try cache first
-    const cached = getHomeCache();
-    if (cached) {
-      setData(cached);
-      setProvider(cached?.provider === 'jikan' ? 'Jikan Fallback' : 'AniList');
+    // ── Step 1: critical (trending + airing) — paint hero + first shelves fast
+    const cachedCritical = getCache(CRITICAL_CACHE_KEY);
+    const cachedSecondary = getCache(SECONDARY_CACHE_KEY);
+
+    if (cachedCritical) {
+      setData({ ...cachedCritical, provider: cachedCritical.provider || 'anilist' });
+      setProvider(cachedCritical.provider === 'jikan' ? 'Jikan Fallback' : 'AniList');
       setLoading(false);
-      return;
     }
+    if (cachedSecondary) {
+      setSecondary(cachedSecondary);
+    }
+    if (cachedCritical && cachedSecondary) return;
 
     (async () => {
-      try {
-        const primary = await anilist(HOME_QUERY);
-        const payload = { ...primary, provider: 'anilist' };
-        setData(payload);
-        setProvider('AniList');
-        setHomeCache(payload);
-      } catch (primaryError) {
-        console.warn('[Home] AniList failed, trying Jikan fallback:', primaryError.message);
+      // Critical fetch (if not cached)
+      if (!cachedCritical) {
         try {
-          const fallback = await fetchJikanFallbackHome();
-          setData(fallback);
-          setProvider('Jikan Fallback');
-          setHomeCache(fallback);
-        } catch (fallbackError) {
-          setError(fallbackError.message || 'Failed to fetch homepage data');
+          const primary = await anilist(CRITICAL_QUERY);
+          const payload = { ...primary, provider: 'anilist' };
+          setData(payload);
+          setProvider('AniList');
+          setCache(CRITICAL_CACHE_KEY, payload);
+        } catch (critErr) {
+          console.warn('[Home] AniList critical failed, trying Jikan:', critErr.message);
+          try {
+            const fallback = await fetchJikanFallbackHome();
+            setData(fallback);
+            setProvider('Jikan Fallback');
+            setCache(CRITICAL_CACHE_KEY, fallback);
+          } catch (fbErr) {
+            setError(fbErr.message || 'Failed to load homepage');
+          }
+        } finally {
+          setLoading(false);
         }
-      } finally {
-        setLoading(false);
+      }
+
+      // Secondary fetch (if not cached) — don't block render
+      if (!cachedSecondary) {
+        try {
+          const sec = await anilist(SECONDARY_QUERY);
+          setSecondary(sec);
+          setCache(SECONDARY_CACHE_KEY, sec);
+        } catch (secErr) {
+          console.warn('[Home] Secondary fetch failed:', secErr.message);
+        }
       }
     })();
   }, []);
@@ -899,10 +919,10 @@ export default function HomePage() {
     };
 
     const scoredPools = [
-      ...getSectionMedia(data, 'airing').slice(0, 12).map((anime) => ({ anime, source: 'airing' })),
-      ...getSectionMedia(data, 'trending').slice(0, 12).map((anime) => ({ anime, source: 'trending' })),
-      ...getSectionMedia(data, 'topRated').slice(0, 12).map((anime) => ({ anime, source: 'topRated' })),
-      ...getSectionMedia(data, 'popular').slice(0, 12).map((anime) => ({ anime, source: 'popular' })),
+      ...getSectionMedia(mergedData, 'airing').slice(0, 12).map((anime) => ({ anime, source: 'airing' })),
+      ...getSectionMedia(mergedData, 'trending').slice(0, 12).map((anime) => ({ anime, source: 'trending' })),
+      ...getSectionMedia(mergedData, 'topRated').slice(0, 12).map((anime) => ({ anime, source: 'topRated' })),
+      ...getSectionMedia(mergedData, 'popular').slice(0, 12).map((anime) => ({ anime, source: 'popular' })),
     ];
 
     const scoreEntry = (anime, source) => {
@@ -936,12 +956,12 @@ export default function HomePage() {
       .sort((a, b) => b.score - a.score)
       .map((entry) => entry.anime)
       .slice(0, 6);
-  }, [data]);
+  }, [mergedData]);
 
-  const popularGrid = getSectionMedia(data, 'popular').slice(0, 18);
+  const popularGrid = getSectionMedia(mergedData, 'popular').slice(0, 18);
 
   const totalCards = SECTION_META.reduce((acc, section) => {
-    return acc + getSectionMedia(data, section.key).length;
+    return acc + getSectionMedia(mergedData, section.key).length;
   }, 0);
 
   const visibleSections = useMemo(() => {
@@ -990,7 +1010,7 @@ export default function HomePage() {
                 <TrendingUp size={13} className="text-cyan-400" /> Source: {provider}
               </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-gray-300">
-                <CalendarDays size={13} className="text-amber-400" /> Updated every 5 min
+                <CalendarDays size={13} className="text-amber-400" /> Updated every 15 min
               </span>
             </div>
 
@@ -1047,7 +1067,7 @@ export default function HomePage() {
                   id={section.id}
                   title={section.title}
                   subtitle={section.subtitle}
-                  list={getSectionMedia(data, section.key)}
+                  list={getSectionMedia(mergedData, section.key)}
                 />
               ))}
 

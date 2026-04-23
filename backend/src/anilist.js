@@ -1,8 +1,10 @@
 import { fetchWithTimeout, readJsonBody, sendJson } from './http.js';
 
 const cache = new Map();
-const cacheCleanupMs = 300000;
-const maxCacheSize = 100;
+const maxCacheSize = 300;
+const TTL_SEARCH = 3 * 60 * 1000;   // 3 min
+const TTL_HOME   = 15 * 60 * 1000;  // 15 min — home sections change slowly
+const TTL_DEFAULT = 5 * 60 * 1000;  // 5 min
 const defaultAniListTimeoutMs = 60000;
 
 function getAniListTimeoutMs() {
@@ -16,11 +18,15 @@ function getCacheKey(query, variables) {
   return JSON.stringify({ query, variables });
 }
 
+// Home queries contain multiple named Page aliases (trending, airing, popular…)
+// Search queries have a variable `$s`. Everything else gets the default TTL.
 function getCacheTtl(query) {
   if (query.includes('mutation')) return 0;
-  if (query.includes('Page')) return cacheCleanupMs;
-  if (query.includes('search')) return cacheCleanupMs;
-  return 180000;
+  if (/\$s\b/.test(query)) return TTL_SEARCH;
+  // Multi-alias home queries: detect by counting 'Page(' occurrences
+  if ((query.match(/\bPage\s*\(/g) || []).length >= 2) return TTL_HOME;
+  if (query.includes('Page')) return TTL_DEFAULT;
+  return TTL_DEFAULT;
 }
 
 setInterval(() => {

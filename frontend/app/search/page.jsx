@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Star, Play, Search, X, Loader2, ArrowLeft, Tv, Clapperboard } from 'lucide-react';
 import { apiUrl } from '@/lib/apiBase';
-import { watchHref } from '@/lib/routes';
+import { animeHref } from '@/lib/routes';
 
 async function anilist(query, variables = {}) {
   try {
@@ -47,7 +47,7 @@ function AnimeCard({ anime }) {
 
   return (
     <Link
-      href={watchHref(anime.id)}
+      href={animeHref(anime.id)}
       className="group relative flex flex-col rounded-xl overflow-hidden bg-gray-900 border border-white/5
                  hover:border-rose-500/40 hover:shadow-xl hover:shadow-rose-950/30 transition-all duration-200"
     >

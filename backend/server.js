@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { handleNodeRequest } from './src/app.js';
 
 const port = Number(process.env.PORT || 3001);
+const host = process.env.HOST || '0.0.0.0';
 
 const server = createServer((req, res) => {
   handleNodeRequest(req, res).catch((error) => {
@@ -17,6 +18,6 @@ const server = createServer((req, res) => {
   });
 });
 
-server.listen(port, () => {
-  console.log(`[server] Listening on http://localhost:${port}`);
+server.listen(port, host, () => {
+  console.log(`[server] Listening on http://${host}:${port}`);
 });
