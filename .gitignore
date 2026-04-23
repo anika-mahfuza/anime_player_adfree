@@ -10,6 +10,13 @@
 !.yarn/releases
 !.yarn/versions
 
+/pages-dist
+/frontend/.next/
+/frontend/out/
+/frontend/node_modules/
+/backend/node_modules/
+/backend/.vercel/
+
 # testing
 /coverage
 
@@ -23,6 +30,7 @@
 # misc
 .DS_Store
 *.pem
+/cookies.txt
 
 # debug
 npm-debug.log*

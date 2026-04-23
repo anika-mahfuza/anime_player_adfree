@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { ArrowLeft, Clock3, Loader2, Play, Tv } from 'lucide-react';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
+import { watchHref } from '@/lib/routes';
 
 function ContinueGridCard({ item }) {
   const progress = item.totalEpisodes
@@ -11,7 +12,7 @@ function ContinueGridCard({ item }) {
 
   return (
     <Link
-      href={`/watch/${item.seasonId}`}
+      href={watchHref(item.seasonId)}
       className="group rounded-xl border border-white/10 bg-[#13121a] hover:border-rose-500/40 hover:shadow-xl hover:shadow-rose-950/20 transition-all duration-200 overflow-hidden"
     >
       <div className="relative aspect-[2/3] overflow-hidden bg-gray-900">

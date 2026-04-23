@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import AnimePlayer from '@/components/AnimePlayer';
 import { useWatchProgress, getWatchSequence } from '@/hooks/useWatchProgress';
 import { apiUrl } from '@/lib/apiBase';
+import { watchHref } from '@/lib/routes';
 import {
   Play, ChevronLeft, Star, Tv, Calendar, Loader2,
   AlertCircle, List, ChevronRight, Clock, RotateCcw, X,
@@ -102,7 +103,14 @@ async function fetchEpisodes(malId) {
   return [...first.data, ...rest.flat()];
 }
 
-async function fetchStreamUrl(titles, episode) {
+async function fetchStreamUrl({
+  titles,
+  episode,
+  year,
+  format,
+  totalEpisodes,
+  duration,
+}) {
   const [primaryTitle, ...restTitles] = titles;
   const altTitles = restTitles.join('|');
   const query = new URLSearchParams({
@@ -110,6 +118,10 @@ async function fetchStreamUrl(titles, episode) {
     episode: String(episode),
   });
   if (altTitles) query.set('altTitles', altTitles);
+  if (year) query.set('year', String(year));
+  if (format) query.set('format', format);
+  if (totalEpisodes) query.set('totalEpisodes', String(totalEpisodes));
+  if (duration) query.set('duration', String(duration));
 
   const res = await fetch(apiUrl(`/api/stream?${query.toString()}`));
   const json = await res.json();
@@ -165,6 +177,18 @@ function Badge({ children, className = '' }) {
   );
 }
 
+export default function WatchPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-rose-500" />
+      </div>
+    }>
+      <WatchPageContent />
+    </Suspense>
+  );
+}
+
 function EpisodeButton({ ep, active, loading, onClick }) {
   return (
     <button
@@ -190,7 +214,7 @@ function SeasonCard({ season, isCurrent }) {
   const img = season.coverImage?.large;
   return (
     <Link
-      href={`/watch/${season.id}`}
+      href={watchHref(season.id)}
       className={`flex items-center gap-2.5 p-2 rounded-lg transition-all group
                   ${isCurrent ? 'bg-rose-600/20 border border-rose-500/30' : 'hover:bg-white/5 border border-transparent'}`}
     >
@@ -208,8 +232,9 @@ function SeasonCard({ season, isCurrent }) {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-export default function WatchPage() {
-  const { id } = useParams();
+function WatchPageContent() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id');
 
   const [anime, setAnime] = useState(null);
   const [episodes, setEpisodes] = useState([]);
@@ -296,7 +321,14 @@ export default function WatchPage() {
         if (fallbackTitle) titleCandidates.push(fallbackTitle);
       }
 
-      const url = await fetchStreamUrl(titleCandidates, ep);
+      const url = await fetchStreamUrl({
+        titles: titleCandidates,
+        episode: ep,
+        year: anime?.seasonYear,
+        format: anime?.format,
+        totalEpisodes: anime?.episodes,
+        duration: anime?.duration,
+      });
       setStreamUrl(url);
     } catch (err) {
       setStreamError(err.message);
@@ -452,6 +484,12 @@ export default function WatchPage() {
   }, [anime, activeEp, getProgress, updateProgress]);
 
   // ── Render helpers ─────────────────────────────────────────────────────────
+  if (!id) return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400">
+      <AlertCircle className="mr-2" /> Missing anime id.
+    </div>
+  );
+
   if (metaLoading) return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="flex flex-col items-center gap-3 text-gray-400">
@@ -686,7 +724,7 @@ export default function WatchPage() {
                 {seasons.map((s, idx) => (
                   <Link
                     key={s.id}
-                    href={`/watch/${s.id}`}
+                    href={watchHref(s.id)}
                     className={`flex items-center gap-3 p-2 rounded-lg transition-all group
                                 ${s.isCurrent ? 'bg-rose-600/20 border border-rose-500/30' : 'hover:bg-white/5 border border-transparent'}`}
                   >

@@ -1,0 +1,11 @@
+{
+  "name": "anime-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env server.js",
+    "start": "node --env-file-if-exists=.env server.js",
+    "build": "node --check server.js && node --check src/app.js"
+  }
+}

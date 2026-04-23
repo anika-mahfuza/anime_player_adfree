@@ -5,8 +5,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Star, Play, Search, X, Loader2, ArrowLeft, Tv, Clapperboard } from 'lucide-react';
 import { apiUrl } from '@/lib/apiBase';
+import { watchHref } from '@/lib/routes';
 
-const AL = 'https://graphql.anilist.co';
 async function anilist(query, variables = {}) {
   try {
     const r = await fetch(apiUrl('/api/anilist'), {
@@ -47,7 +47,7 @@ function AnimeCard({ anime }) {
 
   return (
     <Link
-      href={`/watch/${anime.id}`}
+      href={watchHref(anime.id)}
       className="group relative flex flex-col rounded-xl overflow-hidden bg-gray-900 border border-white/5
                  hover:border-rose-500/40 hover:shadow-xl hover:shadow-rose-950/30 transition-all duration-200"
     >
@@ -181,7 +181,7 @@ function SearchInner() {
         <div className="mb-6 flex items-center gap-3">
           {q ? (
             <h1 className="text-xl font-bold">
-              Results for <span className="text-rose-400">"{q}"</span>
+              Results for <span className="text-rose-400">&quot;{q}&quot;</span>
               {total > 0 && <span className="ml-2 text-sm font-normal text-gray-500">{total}+ matches</span>}
             </h1>
           ) : (
@@ -198,7 +198,7 @@ function SearchInner() {
             {results.map(a => <AnimeCard key={a.id} anime={a} />)}
           </div>
         ) : q && !loading ? (
-          <div className="text-center py-24 text-gray-500">No results for "{q}"</div>
+          <div className="text-center py-24 text-gray-500">No results for &quot;{q}&quot;</div>
         ) : null}
       </main>
     </div>

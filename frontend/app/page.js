@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Star, Tv, Play, Search, X, Loader2, TrendingUp, Trophy, ChevronRight, ChevronLeft, CalendarDays, Flame, Sparkles } from 'lucide-react';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
 import { apiUrl } from '@/lib/apiBase';
+import { watchHref } from '@/lib/routes';
 
 // ── AniList ──────────────────────────────────────────────────────────────────
 const HOME_CACHE_KEY = 'home_cache';
@@ -161,7 +162,7 @@ query ($s: String) {
 function mediaTitle(m) { return m.title?.english || m.title?.romaji || ''; }
 
 function mediaHref(m) {
-  if (m?.id) return `/watch/${m.id}`;
+  if (m?.id) return watchHref(m.id);
   const title = mediaTitle(m);
   if (title) return `/search?q=${encodeURIComponent(title)}`;
   return '/';
@@ -188,6 +189,16 @@ function normalizeJikanAnime(item) {
     nextAiringEpisode: null,
     bannerImage: null,
   };
+}
+
+function mediaIdentity(media, index = 0) {
+  if (media?.id != null) return `id-${media.id}`;
+  if (media?.idMal != null) return `mal-${media.idMal}`;
+
+  const normalizedTitle = mediaTitle(media).trim().toLowerCase();
+  if (normalizedTitle) return `title-${normalizedTitle}`;
+
+  return `idx-${index}`;
 }
 
 async function fetchJikanList(url) {
@@ -227,7 +238,16 @@ async function fetchJikanFallbackHome() {
 }
 
 function getSectionMedia(data, key) {
-  return (data?.[key]?.media || []).filter(Boolean);
+  const source = data?.[key]?.media || [];
+  const seen = new Set();
+
+  return source.filter((media, index) => {
+    if (!media) return false;
+    const identity = mediaIdentity(media, index);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
 }
 
 // ── AnimeCard ─────────────────────────────────────────────────────────────────
@@ -457,27 +477,69 @@ function ContinueWatchingRow() {
 }
 
 function HeroSpotlight({ list }) {
-  if (!list?.length) return null;
-
   const [activeIndex, setActiveIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(true);
-  const total = list.length;
+  const total = list?.length || 0;
   const visibleIndex = total ? activeIndex % total : 0;
-  const slides = useMemo(() => (total > 1 ? [...list, list[0]] : list), [list, total]);
+  const pointerStateRef = useRef({
+    id: null,
+    startX: 0,
+    currentX: 0,
+    dragging: false,
+    moved: false,
+  });
+  const suppressClickRef = useRef(false);
+  const pauseUntilRef = useRef(0);
+  const pauseTimerRef = useRef(null);
+  const slides = useMemo(() => {
+    if (!list?.length) return [];
+    return total > 1 ? [...list, list[0]] : list;
+  }, [list, total]);
 
-  useEffect(() => {
-    setActiveIndex(0);
+  const pauseAutoScroll = useCallback((durationMs = 3000) => {
+    pauseUntilRef.current = Date.now() + durationMs;
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    pauseTimerRef.current = setTimeout(() => {
+      pauseTimerRef.current = null;
+      pauseUntilRef.current = 0;
+    }, durationMs);
+  }, []);
+
+  const moveToSlide = useCallback((nextIndex) => {
+    if (total <= 1) return;
     setIsAnimating(true);
+    setActiveIndex(nextIndex);
+  }, [total]);
+
+  const moveBy = useCallback((direction) => {
+    if (total <= 1) return;
+
+    setIsAnimating(true);
+    setActiveIndex((prev) => {
+      const normalized = total ? prev % total : 0;
+      if (direction > 0) {
+        return normalized === total - 1 ? total : normalized + 1;
+      }
+      return normalized === 0 ? total - 1 : normalized - 1;
+    });
   }, [total]);
 
   useEffect(() => {
     if (total <= 1) return;
     const timer = setInterval(() => {
+      if (pointerStateRef.current.dragging) return;
+      if (pauseUntilRef.current && Date.now() < pauseUntilRef.current) return;
       setActiveIndex((prev) => (prev + 1) % (total + 1));
     }, 2000);
 
     return () => clearInterval(timer);
   }, [total]);
+
+  useEffect(() => {
+    return () => {
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    };
+  }, []);
 
   const handleTransitionEnd = useCallback(() => {
     if (total <= 1) return;
@@ -493,9 +555,94 @@ function HeroSpotlight({ list }) {
     });
   }, [activeIndex, total]);
 
+  const handlePointerDown = useCallback((event) => {
+    if (total <= 1) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+    pointerStateRef.current = {
+      id: event.pointerId,
+      startX: event.clientX,
+      currentX: event.clientX,
+      dragging: true,
+      moved: false,
+    };
+
+    pauseAutoScroll();
+  }, [pauseAutoScroll, total]);
+
+  const handlePointerMove = useCallback((event) => {
+    const state = pointerStateRef.current;
+    if (!state.dragging || state.id !== event.pointerId) return;
+
+    state.currentX = event.clientX;
+    if (Math.abs(state.currentX - state.startX) > 12) {
+      state.moved = true;
+    }
+  }, []);
+
+  const finishPointerGesture = useCallback((event) => {
+    const state = pointerStateRef.current;
+    if (!state.dragging || state.id !== event.pointerId) return;
+
+    const deltaX = state.currentX - state.startX;
+    const moved = state.moved;
+
+    pointerStateRef.current = {
+      id: null,
+      startX: 0,
+      currentX: 0,
+      dragging: false,
+      moved: false,
+    };
+
+    if (!moved) return;
+
+    pauseAutoScroll();
+    suppressClickRef.current = true;
+    setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+
+    if (deltaX <= -40) {
+      moveBy(1);
+    } else if (deltaX >= 40) {
+      moveBy(-1);
+    }
+  }, [moveBy, pauseAutoScroll]);
+
+  const handlePointerCancel = useCallback((event) => {
+    const state = pointerStateRef.current;
+    if (state.id !== event.pointerId) return;
+    pointerStateRef.current = {
+      id: null,
+      startX: 0,
+      currentX: 0,
+      dragging: false,
+      moved: false,
+    };
+  }, []);
+
+  const handleClickCapture = useCallback((event) => {
+    if (suppressClickRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, []);
+
+  if (!list?.length) return null;
+
   return (
     <section className="max-w-screen-xl mx-auto px-4 pt-6 pb-3">
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 h-[290px] sm:h-[360px]">
+      <div
+        className="relative overflow-hidden rounded-2xl border border-white/10 h-[290px] sm:h-[360px]"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointerGesture}
+        onPointerCancel={handlePointerCancel}
+        onPointerLeave={finishPointerGesture}
+        onClickCapture={handleClickCapture}
+        style={{ touchAction: 'pan-y' }}
+      >
         <div
           onTransitionEnd={handleTransitionEnd}
           className={`flex h-full ${isAnimating ? 'transition-transform duration-700 ease-out' : ''}`}
@@ -566,8 +713,8 @@ function HeroSpotlight({ list }) {
               <button
                 key={`${anime.id || `mal-${anime.idMal}`}-dot`}
                 onClick={() => {
-                  setIsAnimating(true);
-                  setActiveIndex(idx);
+                  pauseAutoScroll();
+                  moveToSlide(idx);
                 }}
                 aria-label={`Go to featured slide ${idx + 1}`}
                 className={`h-1.5 rounded-full transition-all ${idx === visibleIndex ? 'w-7 bg-white' : 'w-2 bg-white/45 hover:bg-white/70'}`}
@@ -581,8 +728,6 @@ function HeroSpotlight({ list }) {
 }
 
 function Shelf({ id, title, subtitle, list, compact = true }) {
-  if (!list.length) return null;
-
   const railRef = useRef(null);
 
   const scrollRail = useCallback((direction) => {
@@ -591,6 +736,8 @@ function Shelf({ id, title, subtitle, list, compact = true }) {
     const amount = Math.max(260, Math.floor(el.clientWidth * 0.9));
     el.scrollBy({ left: direction * amount, behavior: 'smooth' });
   }, []);
+
+  if (!list.length) return null;
 
   return (
     <section id={id} className="max-w-screen-xl mx-auto px-4 py-4">
@@ -639,7 +786,7 @@ function ContinueCard({ data }) {
   return (
     <div 
       className="group relative flex-shrink-0 w-36 sm:w-40 cursor-pointer"
-      onClick={() => router.push(`/watch/${data.seasonId}`)}
+      onClick={() => router.push(watchHref(data.seasonId))}
     >
       <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-gray-900">
         {data.coverImage ? (
@@ -825,7 +972,12 @@ export default function HomePage() {
 
       <div className="relative z-10">
         {/* Hero */}
-        {!loading && !error && <HeroSpotlight list={featuredList} />}
+        {!loading && !error && (
+          <HeroSpotlight
+            key={featuredList.map((anime) => anime.id || `mal-${anime.idMal}`).join('|')}
+            list={featuredList}
+          />
+        )}
 
         {/* Stats + quick nav */}
         {!loading && !error && (

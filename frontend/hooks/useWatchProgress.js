@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { apiUrl } from '@/lib/apiBase';
 
 const STORAGE_KEY = 'aniestream_progress';
 
@@ -48,8 +49,6 @@ export function useWatchProgress() {
   return { updateProgress, getProgress, clearProgress };
 }
 
-const AL = 'https://graphql.anilist.co';
-
 async function fetchAnimeMetadata(id) {
   try {
     const query = `
@@ -61,7 +60,7 @@ async function fetchAnimeMetadata(id) {
         }
       }
     `;
-    const res = await fetch('/api/anilist', {
+    const res = await fetch(apiUrl('/api/anilist'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables: { id } })
