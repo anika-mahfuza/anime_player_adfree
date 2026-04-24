@@ -69,7 +69,10 @@ function normalizeSegmentWindow(result, type, requestedLengthSec) {
   let endTime = rawEnd;
   let alignment = 'start';
 
-  if (type === 'outro' || midpointRatio >= 0.7) {
+  if (Math.abs(diff) < 10) {
+    // If the difference is small, it's likely just trimmed black screens. Do not shift.
+    alignment = 'start';
+  } else if (type === 'outro' || midpointRatio >= 0.7) {
     endTime = requestedLengthSec - distanceFromEnd;
     startTime = endTime - segmentLength;
     alignment = 'end';
@@ -247,18 +250,6 @@ function compareResolvedCandidates(next, current) {
   if (!next) return current;
   if (!current) return next;
 
-  const nextSegments = countResolvedSegments(next.skipTimes);
-  const currentSegments = countResolvedSegments(current.skipTimes);
-  if (nextSegments !== currentSegments) {
-    return nextSegments > currentSegments ? next : current;
-  }
-
-  const nextPriority = next.source === 'anime-skip' ? 2 : 1;
-  const currentPriority = current.source === 'anime-skip' ? 2 : 1;
-  if (nextPriority !== currentPriority) {
-    return nextPriority > currentPriority ? next : current;
-  }
-
   return next.score > current.score ? next : current;
 }
 
@@ -287,29 +278,32 @@ function buildSkipTimes(results, requestedLengthSec) {
 
 function scoreSkipTimes(skipTimes, requestedLengthSec, results) {
   let score = 0;
-  if (skipTimes.intro) score += 25;
-  if (skipTimes.outro) score += 25;
-  if (skipTimes.recap) score += 8;
-
-  if (!requestedLengthSec) return score;
-
-  const lengths = results
-    .map((result) => result.episodeLength)
-    .filter((value) => Number.isFinite(value) && value > 0);
-
-  if (lengths.length) {
-    const minDiff = Math.min(...lengths.map((value) => Math.abs(value - requestedLengthSec)));
-    score += Math.max(0, 30 - minDiff / 5);
-  }
+  
+  const addLengthScore = (segment) => {
+    if (segment && segment.providerEpisodeLength && requestedLengthSec) {
+      const diff = Math.abs(segment.providerEpisodeLength - requestedLengthSec);
+      score += Math.max(0, 15 - diff / 2); // max 15 per segment
+    } else if (segment) {
+      score += 5;
+    }
+  };
 
   if (skipTimes.intro) {
-    const ratio = skipTimes.intro.startTime / requestedLengthSec;
-    score += ratio <= 0.2 ? 8 : ratio <= 0.4 ? 4 : -4;
+    score += 25;
+    addLengthScore(skipTimes.intro);
+    const ratio = skipTimes.intro.startTime / (requestedLengthSec || 1440);
+    score += ratio <= 0.25 ? 8 : ratio <= 0.45 ? 4 : -4;
   }
 
   if (skipTimes.outro) {
-    const ratio = skipTimes.outro.startTime / requestedLengthSec;
+    score += 25;
+    addLengthScore(skipTimes.outro);
+    const ratio = skipTimes.outro.startTime / (requestedLengthSec || 1440);
     score += ratio >= 0.75 ? 8 : ratio >= 0.6 ? 4 : -4;
+  }
+  
+  if (skipTimes.recap) {
+    score += 8;
   }
 
   return score;
@@ -344,41 +338,51 @@ async function resolveAnimeSkipForId(anilistId, episodeNumber, episodeLength) {
     return scoreAnimeSkipShow(current, episodeNumber) > scoreAnimeSkipShow(best, episodeNumber) ? current : best;
   }, null);
 
-  const episode = (bestShow?.episodes || []).find((item) => Number.parseInt(item?.number, 10) === episodeNumber);
-  if (!episode?.timestamps?.length) return null;
-
-  const referenceLength = episode.timestamps
-    .map((timestamp) => Number(timestamp?.at))
-    .filter((value) => Number.isFinite(value))
-    .reduce((max, value) => Math.max(max, value), 0);
-
-  const introSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipIntroTypes, referenceLength));
-  const outroSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipOutroTypes, referenceLength));
-
-  const skipTimes = Object.fromEntries(
-    Object.entries({
-      intro: introSegment
-        ? normalizeSegmentWindow({ ...introSegment, episodeLength: referenceLength || undefined }, 'intro', episodeLength)
-        : null,
-      outro: outroSegment
-        ? normalizeSegmentWindow({ ...outroSegment, episodeLength: referenceLength || undefined }, 'outro', episodeLength)
-        : null,
-    }).filter(([, value]) => value),
+  const matchingEpisodes = (bestShow?.episodes || []).filter(
+    (item) => Number.parseInt(item?.number, 10) === episodeNumber,
   );
+  if (!matchingEpisodes.length) return null;
 
-  if (!Object.keys(skipTimes).length) return null;
+  let bestResolved = null;
 
-  return {
-    id: anilistId,
-    skipTimes,
-    source: 'anime-skip',
-    score:
+  for (const episode of matchingEpisodes) {
+    if (!episode?.timestamps?.length) continue;
+
+    const referenceLength = episode.timestamps
+      .map((timestamp) => Number(timestamp?.at))
+      .filter((value) => Number.isFinite(value))
+      .reduce((max, value) => Math.max(max, value), 0);
+
+    const introSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipIntroTypes, referenceLength));
+    const outroSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipOutroTypes, referenceLength));
+
+    const skipTimes = Object.fromEntries(
+      Object.entries({
+        intro: introSegment
+          ? normalizeSegmentWindow({ ...introSegment, episodeLength: referenceLength || undefined }, 'intro', episodeLength)
+          : null,
+        outro: outroSegment
+          ? normalizeSegmentWindow({ ...outroSegment, episodeLength: referenceLength || undefined }, 'outro', episodeLength)
+          : null,
+      }).filter(([, value]) => value),
+    );
+
+    if (!Object.keys(skipTimes).length) continue;
+
+    const score =
       (skipTimes.intro ? 30 : 0) +
       (skipTimes.outro ? 30 : 0) +
       (skipTimes.recap ? 10 : 0) +
-      Math.min(bestShow?.episodeCount || 0, 20),
-  };
+      Math.min(bestShow?.episodeCount || 0, 20) +
+      scoreSkipTimes(skipTimes, episodeLength);
+
+    const resolved = { id: anilistId, skipTimes, source: 'anime-skip', score };
+    bestResolved = compareResolvedCandidates(resolved, bestResolved);
+  }
+
+  return bestResolved;
 }
+
 
 export async function handleSkipTimes({ req, res, url }) {
   if (req.method !== 'GET') {
@@ -425,6 +429,16 @@ export async function handleSkipTimes({ req, res, url }) {
 
     const primary = await resolveSkipTimesForId(primaryMalId, episodeNumber, episodeLength);
     best = compareResolvedCandidates(primary, best);
+
+    // Some sites offset episode numbers (e.g. treating a recap as ep 1, or shifting after it)
+    if (episodeLength) {
+      if (episodeNumber > 0) {
+        const prev = await resolveSkipTimesForId(primaryMalId, episodeNumber - 1, episodeLength);
+        best = compareResolvedCandidates(prev, best);
+      }
+      const next = await resolveSkipTimesForId(primaryMalId, episodeNumber + 1, episodeLength);
+      best = compareResolvedCandidates(next, best);
+    }
 
     for (const id of candidateIds) {
       if (id === primaryMalId) continue;
