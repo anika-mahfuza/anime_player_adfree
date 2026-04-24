@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Artplayer from 'artplayer';
 import Hls from 'hls.js';
-import { SkipForward, Play, Loader2, ChevronLeft, ChevronRight, RotateCcw, FastForward, X } from 'lucide-react';
+import {
+  RiArrowLeftSLine,
+  RiArrowRightSLine,
+  RiCloseLine,
+  RiForward10Line,
+  RiHistoryLine,
+  RiSkipForwardFill,
+} from '@remixicon/react';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function formatTime(s) {
@@ -118,18 +125,6 @@ export default function AnimePlayer({
     onDurationKnownStable(Math.round(duration));
   }, [onDurationKnownStable]);
 
-  // ── reset on URL change ───────────────────────────────────────────────────
-  useEffect(() => {
-    reportedDurationRef.current = 0;
-    seekAppliedRef.current = false;
-    lastProgressSentRef.current = 0;
-    introStateRef.current = 'idle';
-    outroStateRef.current = 'idle';
-    setShowSkipIntro(false);
-    setShowSkipOutro(false);
-    stopCountdown();
-  }, [url]);
-
   // ── autoplay helpers ──────────────────────────────────────────────────────
   const stopCountdown = useCallback(() => {
     if (countdownRef.current) clearInterval(countdownRef.current);
@@ -161,6 +156,18 @@ export default function AnimePlayer({
     stopCountdown();
     onNextEpisodeStable();
   }, [stopCountdown, onNextEpisodeStable]);
+
+  // ── reset on URL change ───────────────────────────────────────────────────
+  useEffect(() => {
+    reportedDurationRef.current = 0;
+    seekAppliedRef.current = false;
+    lastProgressSentRef.current = 0;
+    introStateRef.current = 'idle';
+    outroStateRef.current = 'idle';
+    setShowSkipIntro(false);
+    setShowSkipOutro(false);
+    stopCountdown();
+  }, [url, stopCountdown]);
 
   const buildQualitySelector = useCallback((levels, autoLabel, selected) => {
     return [
@@ -609,7 +616,7 @@ export default function AnimePlayer({
                        bg-black/80 hover:bg-black/90 text-white rounded-lg backdrop-blur-sm
                        border border-white/20 transition-all duration-200 shadow-lg animate-pulse"
           >
-            <SkipForward size={16} className="text-rose-400" />
+            <RiSkipForwardFill size={16} className="text-[var(--color-brass)]" />
             <span className="text-sm font-medium">Skip Intro</span>
           </button>
         )}
@@ -622,7 +629,7 @@ export default function AnimePlayer({
                        bg-black/80 hover:bg-black/90 text-white rounded-lg backdrop-blur-sm
                        border border-white/20 transition-all duration-200 shadow-lg animate-pulse"
           >
-            <SkipForward size={16} className="text-rose-400" />
+            <RiSkipForwardFill size={16} className="text-[var(--color-brass)]" />
             <span className="text-sm font-medium">Skip Outro</span>
           </button>
         )}
@@ -650,7 +657,7 @@ export default function AnimePlayer({
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5
                                bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors border border-white/10"
                   >
-                    <X size={16} />
+                    <RiCloseLine size={16} />
                     <span className="text-sm font-medium">Cancel</span>
                   </button>
                   <button
@@ -659,7 +666,7 @@ export default function AnimePlayer({
                                bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors"
                   >
                     <span className="text-sm font-medium">Play Now</span>
-                    <ChevronRight size={16} />
+                    <RiArrowRightSLine size={16} />
                   </button>
                 </div>
               </div>
@@ -673,18 +680,18 @@ export default function AnimePlayer({
         <button
           onClick={() => onPrevEpisodeStable()}
           disabled={!hasPrevEpisode}
-          className="flex items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/20
-                     disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm text-gray-300"
+          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-[var(--color-mist)]
+                     disabled:cursor-not-allowed disabled:opacity-30"
         >
-          <ChevronLeft size={16} /> P
+          <RiArrowLeftSLine size={16} /> Prev
         </button>
         <button
           onClick={() => {
             if (artRef.current) artRef.current.currentTime = Math.max(0, artRef.current.currentTime - 10);
           }}
-          className="flex items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm text-gray-300"
+          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-[var(--color-mist)]"
         >
-          <RotateCcw size={14} /> 10s
+          <RiHistoryLine size={14} /> Back 10s
         </button>
         <button
           onClick={() => {
@@ -693,25 +700,25 @@ export default function AnimePlayer({
               artRef.current.currentTime = Math.min(dur, artRef.current.currentTime + 10);
             }
           }}
-          className="flex items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm text-gray-300"
+          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-[var(--color-mist)]"
         >
-          <FastForward size={14} /> 10s
+          <RiForward10Line size={14} /> Forward 10s
         </button>
         <button
           onClick={() => { if (showSkipIntro) skipIntro(); else if (showSkipOutro) skipOutro(); }}
           disabled={!showSkipIntro && !showSkipOutro}
-          className="flex items-center gap-1 px-3 py-2 bg-rose-600/30 hover:bg-rose-600/50
-                     disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm text-rose-300"
+          className="flex items-center gap-1.5 rounded-full border border-[rgba(196,160,96,0.24)] bg-[rgba(196,160,96,0.12)] px-4 py-2 text-sm text-[var(--color-brass)]
+                     disabled:cursor-not-allowed disabled:opacity-30"
         >
-          <SkipForward size={14} /> Skip
+          <RiSkipForwardFill size={14} /> Skip
         </button>
         <button
           onClick={() => onNextEpisodeStable()}
           disabled={!hasNextEpisode}
-          className="flex items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/20
-                     disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm text-gray-300"
+          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-[var(--color-mist)]
+                     disabled:cursor-not-allowed disabled:opacity-30"
         >
-          N <ChevronRight size={16} />
+          Next <RiArrowRightSLine size={16} />
         </button>
       </div>
     </>

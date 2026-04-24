@@ -1,36 +1,47 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import AnimePlayer from '@/components/AnimePlayer';
-import { useWatchProgress, getWatchSequence } from '@/hooks/useWatchProgress';
-import { apiUrl } from '@/lib/apiBase';
-import { animeHref, watchHref } from '@/lib/routes';
+import { useSearchParams } from 'next/navigation';
 import {
-  Play, ChevronLeft, Star, Tv, Calendar, Loader2,
-  AlertCircle, List, ChevronRight, Clock, RotateCcw,
-  Clapperboard
-} from 'lucide-react';
-
-// ── APIs ──────────────────────────────────────────────────────────────────────
+  RiAlertLine,
+  RiArrowLeftSLine,
+  RiArrowRightSLine,
+  RiCalendarLine,
+  RiClapperboardLine,
+  RiHistoryLine,
+  RiListCheck3,
+  RiLoader4Line,
+  RiPlayMiniFill,
+  RiSparkling2Fill,
+  RiStarFill,
+  RiTimeLine,
+  RiTv2Line,
+} from '@remixicon/react';
+import AnimePlayer from '@/components/AnimePlayer';
+import { WatchPageSkeleton } from '@/components/skeletons';
+import { MetaPill, SectionHeading, StatusBadge, SurfacePanel, TagChip, TopNav } from '@/components/ui';
+import { getWatchSequence, useWatchProgress } from '@/hooks/useWatchProgress';
+import { apiUrl } from '@/lib/apiBase';
+import { formatRelationType, formatSeason, mediaTitle, stripHtml } from '@/lib/media';
+import { animeHref } from '@/lib/routes';
 
 async function anilist(query, variables = {}) {
   try {
-    const r = await fetch(apiUrl('/api/anilist'), {
+    const response = await fetch(apiUrl('/api/anilist'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables }),
     });
-    if (!r.ok) {
-      if (r.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
-      throw new Error(`HTTP ${r.status}`);
+    if (!response.ok) {
+      if (response.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
+      throw new Error(`HTTP ${response.status}`);
     }
-    const j = await r.json();
-    if (j.errors) throw new Error(j.errors[0].message);
-    return j.data;
-  } catch (err) {
-    console.error('AniList fetch error:', err.message);
+    const payload = await response.json();
+    if (payload.errors) throw new Error(payload.errors[0].message);
+    return payload.data;
+  } catch (error) {
+    console.error('AniList fetch error:', error.message);
     throw new Error('Failed to fetch anime data. Please try again.');
   }
 }
@@ -62,7 +73,6 @@ const ANIME_QUERY = `
   }
 `;
 
-// Fetch skip times from our server-side API (avoids CORS issues)
 async function fetchSkipTimes({
   malId,
   anilistId,
@@ -83,30 +93,25 @@ async function fetchSkipTimes({
     const useMock = new URLSearchParams(window.location.search).get('mock') === 'true';
     if (useMock) params.set('mock', 'true');
 
-    const res = await fetch(apiUrl(`/api/skip-times?${params.toString()}`));
-    if (!res.ok) return null;
-    const data = await res.json();
-    console.log(
-      `[SkipTimes] Fetched for ep ${episode}: ${data.skipTimes ? 'Found' : 'Not found'} ` +
-      `(source: ${data.source || 'unknown'}, malId: ${data.resolvedMalId || malId})`,
-      data
-    );
-    return data;
-  } catch (err) {
-    console.log('Skip times not available for this anime:', err.message);
+    const response = await fetch(apiUrl(`/api/skip-times?${params.toString()}`));
+    if (!response.ok) return null;
+    return response.json();
+  } catch (error) {
+    console.log('Skip times not available for this anime:', error.message);
     return null;
   }
 }
 
-// Jikan — only for episode titles/data (AniList lacks per-ep data)
 async function fetchEpisodes(malId) {
-  const first = await fetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=1`).then(r => r.json());
+  const first = await fetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=1`).then((response) => response.json());
   if (!first.data) return [];
   const last = first.pagination?.last_visible_page ?? 1;
   if (last === 1) return first.data;
   const rest = await Promise.all(
-    Array.from({ length: last - 1 }, (_, i) =>
-      fetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=${i + 2}`).then(r => r.json()).then(j => j.data ?? [])
+    Array.from({ length: last - 1 }, (_, index) =>
+      fetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=${index + 2}`)
+        .then((response) => response.json())
+        .then((payload) => payload.data ?? [])
     )
   );
   return [...first.data, ...rest.flat()];
@@ -132,36 +137,10 @@ async function fetchStreamUrl({
   if (totalEpisodes) query.set('totalEpisodes', String(totalEpisodes));
   if (duration) query.set('duration', String(duration));
 
-  const res = await fetch(apiUrl(`/api/stream?${query.toString()}`));
-  const json = await res.json();
-  if (!res.ok || json.error) throw new Error(json.error ?? 'Stream fetch failed');
-  return json.streamUrl;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function mediaTitle(m) { return m?.title?.english || m?.title?.romaji || ''; }
-
-function formatStatus(s) {
-  return { RELEASING: 'Airing', FINISHED: 'Finished', NOT_YET_RELEASED: 'Upcoming', CANCELLED: 'Cancelled', HIATUS: 'On Hiatus' }[s] ?? s;
-}
-
-function formatSeason(s, y) {
-  if (!s && !y) return null;
-  const season = s ? s[0] + s.slice(1).toLowerCase() : '';
-  return [season, y].filter(Boolean).join(' ');
-}
-
-function formatRelationType(relationType) {
-  return {
-    CURRENT: 'Current Season',
-    PREQUEL: 'Prequel',
-    SEQUEL: 'Sequel',
-    SIDE_STORY: 'Side Story',
-    SPIN_OFF: 'Spin-Off',
-    ALTERNATIVE: 'Alternative',
-    COMPILATION: 'Compilation',
-    OTHER: 'Related',
-  }[relationType] ?? 'Related';
+  const response = await fetch(apiUrl(`/api/stream?${query.toString()}`));
+  const payload = await response.json();
+  if (!response.ok || payload.error) throw new Error(payload.error ?? 'Stream fetch failed');
+  return payload.streamUrl;
 }
 
 const SKIP_TIME_FALLBACK_RELATIONS = new Set([
@@ -174,147 +153,139 @@ const SKIP_TIME_FALLBACK_RELATIONS = new Set([
   'OTHER',
 ]);
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-function Badge({ children, className = '' }) {
-  return (
-    <span className={`px-2 py-0.5 rounded-md bg-white/10 text-xs font-medium text-gray-300 ${className}`}>
-      {children}
-    </span>
-  );
-}
-
-export default function WatchPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <Loader2 size={32} className="animate-spin text-rose-500" />
-      </div>
-    }>
-      <WatchPageContent />
-    </Suspense>
-  );
-}
-
-function EpisodeButton({ ep, active, loading, onClick }) {
+function EpisodeButton({ episode, active, loading, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-medium
-                  transition-all duration-150 text-left group
-                  ${active ? 'bg-rose-600 text-white shadow-lg shadow-rose-900/40' : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white'}`}
+      className={`w-full rounded-[1.15rem] border px-4 py-3 text-left transition ${
+        active
+          ? 'border-[rgba(183,82,106,0.4)] bg-[rgba(139,40,61,0.16)] text-[var(--color-ivory)]'
+          : 'border-white/8 bg-white/5 text-[var(--color-mist)] hover:bg-white/8'
+      }`}
     >
-      {loading && active
-        ? <Loader2 size={13} className="animate-spin shrink-0" />
-        : <Play size={13} className={`shrink-0 transition-opacity ${active ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'}`} />
-      }
-      <span className="truncate">
-        {ep.title ? `${ep.mal_id}. ${ep.title}` : `Episode ${ep.mal_id}`}
-      </span>
-      {ep.filler && <span className="ml-auto text-[10px] text-yellow-500/80 shrink-0">Filler</span>}
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[rgba(8,10,14,0.45)] text-sm font-semibold">
+          {loading && active ? <RiLoader4Line size={15} className="animate-spin" /> : episode.mal_id}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{episode.title || `Episode ${episode.mal_id}`}</p>
+          {episode.filler ? <p className="mt-1 text-[0.68rem] uppercase tracking-[0.14em] text-[var(--color-brass)]">Filler</p> : null}
+        </div>
+        {active ? <RiPlayMiniFill size={18} className="text-[var(--color-brass)]" /> : null}
+      </div>
     </button>
   );
 }
 
 function SeasonCard({ season, isCurrent }) {
   const title = mediaTitle(season);
-  const img = season.coverImage?.large;
-  const relationLabel = formatRelationType(season.relationType);
   const formatLabel = season.format ? season.format.replace(/_/g, ' ') : null;
+
   return (
     <Link
       href={animeHref(season.id)}
-      className={`flex items-center gap-2.5 p-2 rounded-lg transition-all group
-                  ${isCurrent ? 'bg-rose-600/20 border border-rose-500/30' : 'hover:bg-white/5 border border-transparent'}`}
+      className={`surface-panel flex items-center gap-3 p-3 ${isCurrent ? '!border-2 !border-[var(--color-brass)] shadow-[0_0_0_1px_rgba(196,160,96,0.2)]' : ''}`}
     >
-      {img && <img src={img} alt={title} className="w-9 h-12 object-cover rounded shrink-0" />}
+      {season.coverImage?.large ? (
+        <img src={season.coverImage.large} alt={title} className="h-16 w-12 rounded-[0.95rem] object-cover" loading="lazy" />
+      ) : (
+        <div className="flex h-16 w-12 items-center justify-center rounded-[0.95rem] bg-[var(--color-ink)] text-[var(--color-muted)]">
+          <RiTv2Line size={18} />
+        </div>
+      )}
       <div className="min-w-0 flex-1">
-        <p className={`text-xs font-semibold truncate ${isCurrent ? 'text-rose-300' : 'text-gray-300 group-hover:text-white'}`}>{title}</p>
-        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          <span className={`text-[10px] ${isCurrent ? 'text-rose-200/80' : 'text-gray-500'}`}>{relationLabel}</span>
-          {formatLabel && <span className="text-gray-600 text-[10px]">{formatLabel}</span>}
-          {season.seasonYear && <span className="text-gray-600 text-[10px]">{season.seasonYear}</span>}
-          {season.episodes && <span className="text-gray-600 text-[10px]">{season.episodes} eps</span>}
+        <p className="truncate text-sm font-medium text-[var(--color-ivory)]">{title}</p>
+        <div className="mt-1 flex flex-wrap gap-2 text-[0.66rem] uppercase tracking-[0.12em] text-[var(--color-muted)]">
+          <span>{formatRelationType(season.relationType)}</span>
+          {formatLabel ? <span>{formatLabel}</span> : null}
+          {season.seasonYear ? <span>{season.seasonYear}</span> : null}
         </div>
       </div>
-      {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0 animate-pulse" />}
     </Link>
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+export default function WatchPage() {
+  return (
+    <Suspense
+      fallback={
+        <WatchPageSkeleton />
+      }
+    >
+      <WatchPageContent />
+    </Suspense>
+  );
+}
+
 function WatchPageContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
 
   const [anime, setAnime] = useState(null);
   const [episodes, setEpisodes] = useState([]);
-  const [activeEp, setActiveEp] = useState(1);
+  const [activeEpisode, setActiveEpisode] = useState(1);
   const [streamUrl, setStreamUrl] = useState('');
   const [metaLoading, setMetaLoading] = useState(true);
   const [streamLoading, setStreamLoading] = useState(false);
   const [streamError, setStreamError] = useState('');
-  const [showFullDesc, setShowFullDesc] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(false);
   const [skipTimes, setSkipTimes] = useState(null);
   const [hasStarted, setHasStarted] = useState(false);
   const [videoDurationSec, setVideoDurationSec] = useState(null);
 
-  const epRefs = useRef({});
-  const episodesSectionRef = useRef(null);
+  const episodeRefs = useRef({});
   const { updateProgress, getProgress } = useWatchProgress();
-
-// ── Load metadata ──────────────────────────────────────────────────────────
   const isMounted = useRef(true);
-  
+
   useEffect(() => {
     isMounted.current = true;
-    return () => { isMounted.current = false; };
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
-  
+
   useEffect(() => {
     if (!id) return;
     setMetaLoading(true);
     setAnime(null);
     setEpisodes([]);
-    setActiveEp(1);
+    setActiveEpisode(1);
     setStreamUrl('');
 
-    const alId = parseInt(id, 10);
+    const anilistId = Number.parseInt(id, 10);
 
-    anilist(ANIME_QUERY, { id: alId }).then(alData => {
-      if (!isMounted.current) return;
-      const media = alData?.Media;
-      if (!media) throw new Error('Anime not found');
-      setAnime(media);
+    anilist(ANIME_QUERY, { id: anilistId })
+      .then((data) => {
+        if (!isMounted.current) return;
+        const media = data?.Media;
+        if (!media) throw new Error('Anime not found');
+        setAnime(media);
 
-      // Check for saved progress
-      const saved = getProgress(media.id);
-      if (saved && saved.episode > 0) {
-        setActiveEp(saved.episode);
-      }
+        const saved = getProgress(media.id);
+        if (saved && saved.episode > 0) setActiveEpisode(saved.episode);
 
-      const malId = media.idMal;
-      if (malId) {
-        fetchEpisodes(malId).then(epData => {
-          if (epData.length) {
-            setEpisodes(epData);
-          } else if (media.episodes) {
-            setEpisodes(Array.from({ length: media.episodes }, (_, i) => ({ mal_id: i + 1, title: null })));
-          }
-        });
-} else if (media.episodes) {
-            setEpisodes(Array.from({ length: media.episodes }, (_, i) => ({ mal_id: i + 1, title: null })));
-          }
-    }).catch(err => {
-      console.error(err);
-    }).finally(() => setMetaLoading(false));
-}, [id]);
+        const malId = media.idMal;
+        if (malId) {
+          fetchEpisodes(malId).then((episodeData) => {
+            if (!isMounted.current) return;
+            if (episodeData.length) {
+              setEpisodes(episodeData);
+            } else if (media.episodes) {
+              setEpisodes(Array.from({ length: media.episodes }, (_, index) => ({ mal_id: index + 1, title: null })));
+            }
+          });
+        } else if (media.episodes) {
+          setEpisodes(Array.from({ length: media.episodes }, (_, index) => ({ mal_id: index + 1, title: null })));
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+      })
+      .finally(() => setMetaLoading(false));
+  }, [id, getProgress]);
 
-  // ── Load stream function ─────────────────────────────────────────────────────────
-  const loadStream = useCallback(async (ep) => {
+  const loadStream = useCallback(async (episodeNumber) => {
     if (!anime) return;
-    if (streamUrl && streamUrl.includes(`/api/stream`) && !streamLoading) {
-      return;
-    }
     setStreamLoading(true);
     setStreamError('');
     try {
@@ -322,67 +293,61 @@ function WatchPageContent() {
         anime?.title?.english,
         anime?.title?.romaji,
         anime?.title?.native,
-      ].filter(Boolean).map(t => t.trim()))];
+      ].filter(Boolean).map((title) => title.trim()))];
 
       if (!titleCandidates.length) {
         const fallbackTitle = mediaTitle(anime);
         if (fallbackTitle) titleCandidates.push(fallbackTitle);
       }
 
-      const url = await fetchStreamUrl({
+      const nextUrl = await fetchStreamUrl({
         titles: titleCandidates,
-        episode: ep,
+        episode: episodeNumber,
         year: anime?.seasonYear,
         format: anime?.format,
         totalEpisodes: anime?.episodes,
         duration: anime?.duration,
       });
-      setStreamUrl(url);
-    } catch (err) {
-      setStreamError(err.message);
+
+      setStreamUrl(nextUrl);
+    } catch (error) {
+      setStreamError(error.message);
     } finally {
       setStreamLoading(false);
     }
-  }, [anime, streamUrl, streamLoading]);
+  }, [anime]);
 
-  // ── Load stream only when episode changes or user starts ────────────────────────────
   const handleStartWatching = useCallback(() => {
     setHasStarted(true);
     setStreamUrl('');
-    setStreamLoading(true); // Show loading immediately
-    loadStream(activeEp);
-  }, [activeEp, loadStream]);
+    setStreamLoading(true);
+    loadStream(activeEpisode);
+  }, [activeEpisode, loadStream]);
 
   useEffect(() => {
     if (!anime || !hasStarted) return;
-    loadStream(activeEp);
-  }, [activeEp]);
+    loadStream(activeEpisode);
+  }, [anime, hasStarted, activeEpisode, loadStream]);
 
   useEffect(() => {
     setVideoDurationSec(null);
-  }, [activeEp, streamUrl]);
+  }, [activeEpisode, streamUrl]);
 
-  // Auto-start from 2nd episode if resuming
   useEffect(() => {
     if (!anime || hasStarted) return;
-    if (activeEp > 1) {
-      setHasStarted(true);
-    }
-  }, [activeEp]);
+    if (activeEpisode > 1) setHasStarted(true);
+  }, [anime, hasStarted, activeEpisode]);
 
-  // Scroll active ep into view
   useEffect(() => {
-    epRefs.current[activeEp]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [activeEp]);
+    episodeRefs.current[activeEpisode]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeEpisode]);
 
-  // Clear skip times only when episode/anime changes — NOT on duration update
   useEffect(() => {
     setSkipTimes(null);
-  }, [anime?.id, activeEp]);
+  }, [anime?.id, activeEpisode]);
 
-  // Fetch skip times only after the player reports the real stream duration.
   useEffect(() => {
-    if (!anime?.idMal || !activeEp || !hasStarted || !streamUrl || !videoDurationSec) return;
+    if (!anime?.idMal || !activeEpisode || !hasStarted || !streamUrl || !videoDurationSec) return;
 
     const candidateMalIds = [
       anime.idMal,
@@ -394,6 +359,7 @@ function WatchPageContent() {
         )
         .map((edge) => edge.node.idMal) ?? []),
     ].filter(Boolean);
+
     const candidateAnilistIds = [
       anime.id,
       ...(anime.relations?.edges
@@ -410,53 +376,45 @@ function WatchPageContent() {
     fetchSkipTimes({
       malId: anime.idMal,
       anilistId: anime.id,
-      episode: activeEp,
+      episode: activeEpisode,
       episodeLengthSeconds: videoDurationSec,
       candidateMalIds,
       candidateAnilistIds,
-    }).then(payload => {
+    }).then((payload) => {
       if (cancelled) return;
-      const times = payload?.skipTimes || null;
-      setSkipTimes(times);
-      console.log(`[Watch] Skip times loaded for ep ${activeEp}:`, times);
+      setSkipTimes(payload?.skipTimes || null);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [anime, activeEp, hasStarted, streamUrl, videoDurationSec]);
+  }, [anime, activeEpisode, hasStarted, streamUrl, videoDurationSec]);
 
   const handleDurationKnown = useCallback((seconds) => {
     if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return;
-    setVideoDurationSec(prev => (prev && Math.abs(prev - seconds) < 1 ? prev : seconds));
+    setVideoDurationSec((previous) => (previous && Math.abs(previous - seconds) < 1 ? previous : seconds));
   }, []);
 
-  // Save progress when episode changes
   useEffect(() => {
-    if (anime && activeEp > 0) {
+    if (anime && activeEpisode > 0) {
       updateProgress(anime.id, {
-        episode: activeEp,
+        episode: activeEpisode,
         seasonId: anime.id,
-        totalEpisodes: anime.episodes || 1
+        totalEpisodes: anime.episodes || 1,
       });
     }
-  }, [anime, activeEp, updateProgress]);
+  }, [anime, activeEpisode, updateProgress]);
 
-  // ── Episode navigation callbacks for player ───────────────────────────────
   const handleNextEpisode = useCallback(() => {
-    if (activeEp < episodes.length) {
-      setActiveEp(p => p + 1);
-    }
-  }, [activeEp, episodes.length]);
+    if (activeEpisode < episodes.length) setActiveEpisode((previous) => previous + 1);
+  }, [activeEpisode, episodes.length]);
 
   const handlePrevEpisode = useCallback(() => {
-    if (activeEp > 1) {
-      setActiveEp(p => Math.max(1, p - 1));
-    }
-  }, [activeEp]);
+    if (activeEpisode > 1) setActiveEpisode((previous) => Math.max(1, previous - 1));
+  }, [activeEpisode]);
 
   const handlePlaybackProgress = useCallback(({ currentTime, duration, ended }) => {
-    if (!anime || !activeEp) return;
+    if (!anime || !activeEpisode) return;
 
     const existing = getProgress(anime.id) || {};
     const safeCurrent = Math.max(0, Math.floor(Number(currentTime) || 0));
@@ -467,316 +425,274 @@ function WatchPageContent() {
     const episodePositions = { ...(existing.episodePositions || {}) };
     const episodeDurations = { ...(existing.episodeDurations || {}) };
 
-    if (safeDuration) {
-      episodeDurations[activeEp] = safeDuration;
-    }
+    if (safeDuration) episodeDurations[activeEpisode] = safeDuration;
 
     const nearEndThreshold = safeDuration ? Math.max(8, Math.floor(safeDuration * 0.02)) : 8;
     const treatAsCompleted = ended || (safeDuration ? safeCurrent >= safeDuration - nearEndThreshold : false);
 
-    if (treatAsCompleted || safeCurrent < 3) {
-      delete episodePositions[activeEp];
-    } else {
-      episodePositions[activeEp] = safeCurrent;
-    }
+    if (treatAsCompleted || safeCurrent < 3) delete episodePositions[activeEpisode];
+    else episodePositions[activeEpisode] = safeCurrent;
 
     updateProgress(anime.id, {
-      episode: activeEp,
+      episode: activeEpisode,
       seasonId: anime.id,
       totalEpisodes: anime.episodes || 1,
       episodePositions,
       episodeDurations,
     });
-  }, [anime, activeEp, getProgress, updateProgress]);
+  }, [anime, activeEpisode, getProgress, updateProgress]);
 
-  // ── Render helpers ─────────────────────────────────────────────────────────
-  if (!id) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400">
-      <AlertCircle className="mr-2" /> Missing anime id.
-    </div>
-  );
+  const watchSequence = useMemo(() => getWatchSequence(anime, anime?.relations), [anime]);
 
-  if (metaLoading) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3 text-gray-400">
-        <Loader2 size={36} className="animate-spin text-rose-500" />
-        <span className="text-sm">Loading anime…</span>
-      </div>
-    </div>
-  );
+  if (!id) {
+    return (
+      <main className="site-shell flex min-h-screen items-center justify-center px-4">
+        <SurfacePanel className="flex items-center gap-2 px-6 py-5 text-sm text-[var(--color-muted)]">
+          <RiAlertLine size={18} className="text-[var(--color-brass)]" />
+          Missing anime id.
+        </SurfacePanel>
+      </main>
+    );
+  }
 
-  if (!anime) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400">
-      <AlertCircle className="mr-2" /> Anime not found.
-    </div>
-  );
+  if (metaLoading) {
+    return <WatchPageSkeleton />;
+  }
+
+  if (!anime) {
+    return (
+      <main className="site-shell flex min-h-screen items-center justify-center px-4">
+        <SurfacePanel className="flex items-center gap-2 px-6 py-5 text-sm text-[var(--color-muted)]">
+          <RiAlertLine size={18} className="text-[var(--color-brass)]" />
+          Anime not found.
+        </SurfacePanel>
+      </main>
+    );
+  }
 
   const title = mediaTitle(anime);
   const score = anime.meanScore ? (anime.meanScore / 10).toFixed(1) : null;
   const studio = anime.studios?.nodes?.[0]?.name;
-  const season = formatSeason(anime.season, anime.seasonYear);
-  const desc = anime.description?.replace(/<[^>]+>/g, '') ?? '';
-  const descShort = desc.length > 200 ? desc.slice(0, 200) + '…' : desc;
+  const seasonLabel = formatSeason(anime.season, anime.seasonYear);
+  const description = stripHtml(anime.description);
+  const descriptionShort = description.length > 240 ? `${description.slice(0, 240)}...` : description;
 
-  const currentEpisodeData = episodes.find(ep => ep.mal_id === activeEp);
-  const nextEpisodeData = episodes.find(ep => ep.mal_id === activeEp + 1);
-  const savedProgress = anime ? getProgress(anime.id) : null;
-  const resumeTimeForActiveEpisode = Number(savedProgress?.episodePositions?.[activeEp] || 0);
-  const watchSequence = getWatchSequence(anime, anime?.relations);
+  const currentEpisodeData = episodes.find((episode) => episode.mal_id === activeEpisode);
+  const nextEpisodeData = episodes.find((episode) => episode.mal_id === activeEpisode + 1);
+  const savedProgress = getProgress(anime.id) || null;
+  const resumeTimeForActiveEpisode = Number(savedProgress?.episodePositions?.[activeEpisode] || 0);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-
-      {/* ── Banner ── */}
-      {anime.bannerImage && (
-        <div className="relative h-36 sm:h-48 w-full overflow-hidden">
-          <img src={anime.bannerImage} alt="" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-gray-950" />
+    <main className="site-shell">
+      <TopNav
+        backHref="/"
+        backLabel="Home"
+        rightSlot={<span className="text-xs uppercase tracking-[0.2em] text-[var(--color-muted)]">Player View</span>}
+      >
+        <div>
+          <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">Now Watching</p>
+          <h1 className="truncate font-[family:var(--font-display)] text-2xl text-[var(--color-ivory)]">{title}</h1>
         </div>
-      )}
+      </TopNav>
 
-      {/* ── Continue Watching Banner ── */}
-      {(() => {
-        const saved = getProgress(anime.id);
-        if (saved && saved.episode > 1) {
-          return (
-            <div className="bg-rose-900/30 border-b border-rose-500/30 px-4 py-2 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-rose-200 text-sm">
-                <RotateCcw size={14} />
-                <span>Continue from Episode {saved.episode}?</span>
-              </div>
-              <button
-                onClick={() => setActiveEp(saved.episode)}
-                className="text-xs px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded transition-colors"
-              >
-                Resume
-              </button>
+      {savedProgress?.episode > 1 ? (
+        <section className="mx-auto max-w-screen-xl px-4 pt-5 sm:px-6">
+          <SurfacePanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div className="flex items-center gap-2 text-sm text-[var(--color-mist)]">
+              <RiHistoryLine size={16} className="text-[var(--color-brass)]" />
+              Continue from episode {savedProgress.episode}
             </div>
-          );
-        }
-        return null;
-      })()}
+            <button onClick={() => setActiveEpisode(savedProgress.episode)} className="button-primary">
+              Resume
+            </button>
+          </SurfacePanel>
+        </section>
+      ) : null}
 
-      {/* ── Top nav ── */}
-      <nav className="sticky top-0 z-50 bg-gray-950/90 backdrop-blur border-b border-white/5 px-4 py-3 flex items-center gap-3">
-        <Link href="/" className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors text-sm shrink-0">
-          <ChevronLeft size={16} /><span>Back</span>
-        </Link>
-        <span className="text-white/20">·</span>
-        <h1 className="text-sm font-semibold truncate text-gray-100 flex-1">{title}</h1>
-      </nav>
-
-      {/* ── Main layout ── */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* ── Left — player + info ── */}
-        <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-5 min-w-0">
-
-          {/* Player */}
-          <div className="relative">
-            {streamError ? (
-              <div className="w-full aspect-video bg-gray-900 rounded-xl flex flex-col items-center justify-center gap-3 text-gray-400">
-                <AlertCircle size={32} className="text-rose-500" />
-                <p className="text-sm text-center max-w-xs">{streamError}</p>
-                <button onClick={() => loadStream(activeEp)}
-                  className="text-xs px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors">
-                  Retry
-                </button>
-              </div>
-            ) : streamLoading ? (
-              <div className="w-full aspect-video bg-gray-900 rounded-xl flex flex-col items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-10 h-10 border-3 border-rose-500/30 border-t-rose-500 rounded-full animate-spin" />
-                  <p className="text-gray-400 text-sm">Loading...</p>
+      <section className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_24rem]">
+          <div className="space-y-6">
+            <SurfacePanel className="overflow-hidden p-4 sm:p-5">
+              {anime.bannerImage ? (
+                <div className="mb-4 h-28 overflow-hidden rounded-[1.35rem] border border-white/8 sm:h-36">
+                  <img src={anime.bannerImage} alt="" className="h-full w-full object-cover" />
                 </div>
-              </div>
-            ) : !streamUrl && !hasStarted ? (
-              <div className="relative w-full aspect-video bg-gray-900 rounded-xl flex flex-col items-center justify-center">
-                <button
-                  onClick={handleStartWatching}
-                  className="flex items-center gap-2 px-6 py-3 bg-rose-600 hover:bg-rose-700 rounded-full transition-all shadow-lg shadow-rose-600/20"
-                >
-                  <Play size={20} fill="white" className="text-white" />
-                  <span className="text-white font-semibold text-sm">Start Watching</span>
-                  {activeEp > 1 && (
-                    <span className="text-rose-200 text-xs ml-1">- Ep {activeEp}</span>
-                  )}
-                </button>
-                {activeEp === 1 && (
-                  <p className="text-gray-500 text-xs mt-3">Click to play episode 1</p>
-                )}
-              </div>
-            ) : (
-              <AnimePlayer
-                url={streamUrl}
-                episodeData={{
-                  current: currentEpisodeData,
-                  nextEpisode: nextEpisodeData ? { number: nextEpisodeData.mal_id, title: nextEpisodeData.title } : null
-                }}
-                skipTimes={skipTimes}
-                onDurationKnown={handleDurationKnown}
-                onProgress={handlePlaybackProgress}
-                initialSeekTime={resumeTimeForActiveEpisode}
-                episodeDuration={anime.duration || 24}
-                onNextEpisode={handleNextEpisode}
-                onPrevEpisode={handlePrevEpisode}
-                hasNextEpisode={activeEp < episodes.length}
-                hasPrevEpisode={activeEp > 1}
-                autoPlayNext={true}
-              />
-            )}
-          </div>
+              ) : null}
 
-          {/* Ep prev / next nav */}
-          {episodes.length > 1 && (
-            <div className="flex items-center gap-3">
-              <button
-                disabled={activeEp <= 1}
-                onClick={() => setActiveEp(p => Math.max(1, p - 1))}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10
-                           text-gray-400 hover:text-white text-xs font-medium transition-colors
-                           disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft size={14} /> Prev
-              </button>
-              <span className="text-xs text-gray-500 flex-1 text-center">Episode {activeEp} / {episodes.length}</span>
-              <button
-                disabled={activeEp >= episodes.length}
-                onClick={() => setActiveEp(p => Math.min(episodes.length, p + 1))}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10
-                           text-gray-400 hover:text-white text-xs font-medium transition-colors
-                           disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                Next <ChevronRight size={14} />
-              </button>
-            </div>
-          )}
-
-          {/* Anime info */}
-          <div className="flex gap-4 bg-white/5 rounded-xl p-4 border border-white/5">
-            {anime.coverImage?.extraLarge && (
-              <img src={anime.coverImage.extraLarge} alt={title}
-                className="w-24 h-36 object-cover rounded-lg shrink-0 shadow-xl" />
-            )}
-            <div className="flex flex-col gap-2.5 min-w-0 flex-1">
-              <div>
-                <h2 className="text-lg font-bold text-white leading-tight">{title}</h2>
-                {anime.title?.native && (
-                  <p className="text-xs text-gray-500 mt-0.5">{anime.title.native}</p>
+              <div className="relative overflow-hidden rounded-[1.5rem] bg-black">
+                {streamError ? (
+                  <div className="flex aspect-video flex-col items-center justify-center gap-3 bg-[var(--color-ink)] px-4 text-center text-[var(--color-muted)]">
+                    <RiAlertLine size={28} className="text-[var(--color-brass)]" />
+                    <p className="max-w-md text-sm">{streamError}</p>
+                    <button onClick={() => loadStream(activeEpisode)} className="button-primary">Retry Stream</button>
+                  </div>
+                ) : streamLoading ? (
+                  <div className="flex aspect-video flex-col items-center justify-center bg-[var(--color-ink)] text-[var(--color-muted)]">
+                    <RiLoader4Line size={28} className="animate-spin text-[var(--color-brass)]" />
+                    <p className="mt-3 text-sm">Loading episode...</p>
+                  </div>
+                ) : !streamUrl && !hasStarted ? (
+                  <div className="relative flex aspect-video flex-col items-center justify-center overflow-hidden bg-[var(--color-ink)] px-4 text-center">
+                    {anime.coverImage?.extraLarge ? (
+                      <img src={anime.coverImage.extraLarge} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" />
+                    ) : null}
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.2),rgba(8,10,14,0.9))]" />
+                    <div className="relative z-10">
+                      <button onClick={handleStartWatching} className="button-primary">
+                        <RiPlayMiniFill size={20} className="translate-x-[1px]" />
+                        {activeEpisode > 1 ? `Resume Episode ${activeEpisode}` : 'Start Watching'}
+                      </button>
+                      <p className="mt-3 text-sm text-[var(--color-muted)]">
+                        {activeEpisode > 1 ? 'Your saved progress is ready to resume.' : 'Press play to begin episode 1.'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <AnimePlayer
+                    url={streamUrl}
+                    episodeData={{
+                      current: currentEpisodeData,
+                      nextEpisode: nextEpisodeData ? { number: nextEpisodeData.mal_id, title: nextEpisodeData.title } : null,
+                    }}
+                    skipTimes={skipTimes}
+                    onDurationKnown={handleDurationKnown}
+                    onProgress={handlePlaybackProgress}
+                    initialSeekTime={resumeTimeForActiveEpisode}
+                    episodeDuration={anime.duration || 24}
+                    onNextEpisode={handleNextEpisode}
+                    onPrevEpisode={handlePrevEpisode}
+                    hasNextEpisode={activeEpisode < episodes.length}
+                    hasPrevEpisode={activeEpisode > 1}
+                    autoPlayNext={true}
+                  />
                 )}
               </div>
 
-              {/* Badges row */}
-              <div className="flex flex-wrap gap-2 items-center">
-                {score && (
-                  <span className="flex items-center gap-1 text-yellow-400 text-sm font-bold">
-                    <Star size={13} fill="currentColor" />{score}
-                  </span>
-                )}
-                {anime.format && <Badge>{anime.format}</Badge>}
-                {anime.status && <Badge>{formatStatus(anime.status)}</Badge>}
-                {anime.episodes && <Badge><Tv size={10} className="inline mr-1" />{anime.episodes} eps</Badge>}
-                {anime.duration && <Badge><Clock size={10} className="inline mr-1" />{anime.duration}m</Badge>}
-                {season && <Badge><Calendar size={10} className="inline mr-1" />{season}</Badge>}
-                {studio && <Badge>{studio}</Badge>}
-              </div>
-
-              {/* Next airing */}
-              {anime.nextAiringEpisode && (
-                <p className="text-xs text-rose-400">
-                  EP {anime.nextAiringEpisode.episode} airs{' '}
-                  {new Date(anime.nextAiringEpisode.airingAt * 1000).toLocaleDateString()}
-                </p>
-              )}
-
-              {/* Genres */}
-              {anime.genres?.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {anime.genres.map(g => (
-                    <span key={g} className="px-2 py-0.5 rounded-full bg-rose-900/40 text-rose-300 text-xs">{g}</span>
-                  ))}
-                </div>
-              )}
-
-              {/* Synopsis */}
-              {desc && (
-                <div>
-                  <p className="text-xs text-gray-400 leading-relaxed">
-                    {showFullDesc ? desc : descShort}
+              {episodes.length > 1 ? (
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <button
+                    disabled={activeEpisode <= 1}
+                    onClick={() => setActiveEpisode((previous) => Math.max(1, previous - 1))}
+                    className="button-secondary disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <RiArrowLeftSLine size={18} />
+                    Previous
+                  </button>
+                  <p className="text-sm uppercase tracking-[0.16em] text-[var(--color-muted)]">
+                    Episode {activeEpisode} / {episodes.length}
                   </p>
-                  {desc.length > 200 && (
-                    <button onClick={() => setShowFullDesc(v => !v)}
-                      className="text-xs text-rose-400 hover:text-rose-300 mt-1 transition-colors">
-                      {showFullDesc ? 'Show less' : 'Show more'}
-                    </button>
-                  )}
+                  <button
+                    disabled={activeEpisode >= episodes.length}
+                    onClick={() => setActiveEpisode((previous) => Math.min(episodes.length, previous + 1))}
+                    className="button-secondary disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    Next
+                    <RiArrowRightSLine size={18} />
+                  </button>
                 </div>
-              )}
-            </div>
+              ) : null}
+            </SurfacePanel>
+
+            <SurfacePanel className="overflow-hidden p-5 sm:p-6">
+              <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)]">
+                {anime.coverImage?.extraLarge ? (
+                  <img
+                    src={anime.coverImage.extraLarge}
+                    alt={title}
+                    className="h-48 w-32 rounded-[1.4rem] border border-white/8 object-cover"
+                  />
+                ) : null}
+
+                <div>
+                  <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">Episode Context</p>
+                  <h2 className="mt-2 font-[family:var(--font-display)] text-3xl text-[var(--color-ivory)]">{title}</h2>
+                  {anime.title?.native ? <p className="mt-2 text-sm text-[var(--color-muted)]">{anime.title.native}</p> : null}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {score ? <MetaPill icon={RiStarFill} accent="var(--color-brass)">{score}</MetaPill> : null}
+                    {anime.format ? <MetaPill icon={RiClapperboardLine}>{anime.format.replace(/_/g, ' ')}</MetaPill> : null}
+                    {anime.episodes ? <MetaPill icon={RiTv2Line}>{anime.episodes} eps</MetaPill> : null}
+                    {anime.duration ? <MetaPill icon={RiTimeLine}>{anime.duration}m</MetaPill> : null}
+                    {seasonLabel ? <MetaPill icon={RiCalendarLine}>{seasonLabel}</MetaPill> : null}
+                    {studio ? <MetaPill icon={RiSparkling2Fill}>{studio}</MetaPill> : null}
+                    <StatusBadge status={anime.status} />
+                  </div>
+
+                  {anime.nextAiringEpisode ? (
+                    <p className="mt-4 text-sm text-[var(--color-brass)]">
+                      Episode {anime.nextAiringEpisode.episode} airs on {new Date(anime.nextAiringEpisode.airingAt * 1000).toLocaleDateString()}
+                    </p>
+                  ) : null}
+
+                  {anime.genres?.length ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {anime.genres.map((genre) => (
+                        <TagChip key={genre}>{genre}</TagChip>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {description ? (
+                    <div className="mt-5">
+                      <p className="text-sm leading-7 text-[var(--color-mist)]">
+                        {showFullDescription ? description : descriptionShort}
+                      </p>
+                      {description.length > 240 ? (
+                        <button onClick={() => setShowFullDescription((previous) => !previous)} className="mt-2 text-sm text-[var(--color-brass)]">
+                          {showFullDescription ? 'Show less' : 'Show more'}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </SurfacePanel>
           </div>
 
-          <section
-            ref={episodesSectionRef}
-            className="bg-white/5 rounded-xl border border-white/5 overflow-hidden"
-          >
-            <div className="px-4 py-3 border-b border-white/10 flex flex-wrap items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <List size={16} className="text-rose-400" />
-                  <h3 className="text-sm font-semibold text-gray-100">Episodes</h3>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Episode {activeEp} selected {episodes.length > 0 ? `- ${episodes.length} total` : ''}
-                </p>
-              </div>
-              {episodes.length > 1 && (
-                <button
-                  onClick={() => epRefs.current[activeEp]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-gray-300 hover:text-white transition-colors"
-                >
-                  Jump to current
-                </button>
-              )}
-            </div>
-
-            <div className="max-h-[26rem] overflow-y-auto p-2 space-y-1">
-              {episodes.length === 0 ? (
-                <div className="text-center text-gray-600 text-xs py-8">No episode data</div>
-              ) : episodes.map(ep => (
-                <div key={ep.mal_id} ref={el => { epRefs.current[ep.mal_id] = el; }}>
-                  <EpisodeButton
-                    ep={ep}
-                    active={ep.mal_id === activeEp}
-                    loading={streamLoading}
-                    onClick={() => { if (ep.mal_id !== activeEp) setActiveEp(ep.mal_id); }}
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {watchSequence.length > 1 && (
-            <div className="bg-white/5 rounded-xl p-4 border border-white/5">
-              <div className="flex items-center gap-2 mb-1">
-                <Clapperboard size={16} className="text-rose-400" />
-                <h3 className="text-sm font-semibold text-gray-200">Seasons</h3>
-              </div>
-              <p className="text-xs text-gray-500 mb-3">Main seasons, OVAs, movies, and side stories in watch order.</p>
-              <div className="flex flex-col gap-2">
-                {watchSequence.map((item) => (
-                  <SeasonCard
-                    key={item.id}
-                    season={item}
-                    isCurrent={item.id === anime.id}
-                  />
+          <div className="space-y-6">
+            <SurfacePanel className="overflow-hidden p-5">
+              <SectionHeading
+                eyebrow="Episode Rail"
+                title="Episodes"
+                subtitle={`Episode ${activeEpisode} selected${episodes.length > 0 ? ` • ${episodes.length} total` : ''}`}
+              />
+              <div className="mt-5 max-h-[30rem] space-y-2 overflow-y-auto pr-1">
+                {episodes.length === 0 ? (
+                  <div className="rounded-[1.2rem] border border-white/8 bg-white/5 px-4 py-8 text-center text-sm text-[var(--color-muted)]">
+                    No episode data available.
+                  </div>
+                ) : episodes.map((episode) => (
+                  <div key={episode.mal_id} ref={(element) => { episodeRefs.current[episode.mal_id] = element; }}>
+                    <EpisodeButton
+                      episode={episode}
+                      active={episode.mal_id === activeEpisode}
+                      loading={streamLoading}
+                      onClick={() => {
+                        if (episode.mal_id !== activeEpisode) setActiveEpisode(episode.mal_id);
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
-            </div>
-          )}
+            </SurfacePanel>
+
+            {watchSequence.length > 1 ? (
+              <SurfacePanel className="overflow-hidden p-5">
+                <SectionHeading
+                  eyebrow="Watch Order"
+                  title="Seasons"
+                  subtitle="Main seasons, OVAs, side stories, and related titles."
+                />
+                <div className="mt-5 space-y-3">
+                  {watchSequence.map((item) => (
+                    <SeasonCard key={item.id} season={item} isCurrent={item.id === anime.id} />
+                  ))}
+                </div>
+              </SurfacePanel>
+            ) : null}
+          </div>
         </div>
-
-      </div>
-
-    </div>
+      </section>
+    </main>
   );
 }

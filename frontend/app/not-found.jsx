@@ -1,58 +1,46 @@
+'use client';
+
 import Link from 'next/link';
-import { Compass, Home, Search, TriangleAlert } from 'lucide-react';
+import { RiCompass3Line, RiHome5Line, RiSearchLine } from '@remixicon/react';
+import { EmptyState, SurfacePanel } from '@/components/ui';
 
 export default function NotFound() {
   return (
-    <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4">
-      <section className="w-full max-w-2xl rounded-3xl border border-white/10 bg-white/5 p-8 sm:p-10 shadow-2xl shadow-black/30">
-        <div className="inline-flex items-center gap-2 rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-200">
-          <TriangleAlert size={14} />
-          Page not found
-        </div>
-
-        <h1 className="mt-5 text-3xl sm:text-4xl font-black tracking-tight text-white">
-          That anime page does not exist.
-        </h1>
-        <p className="mt-3 max-w-xl text-sm sm:text-base text-gray-400 leading-relaxed">
-          The link may be broken, the page may have moved, or the route was typed incorrectly.
-          You can head back home or jump straight into search.
-        </p>
-
-        <div className="mt-8 grid gap-3 sm:grid-cols-2">
-          <Link
-            href="/"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-rose-500"
-          >
-            <Home size={16} />
-            Go Home
-          </Link>
-          <Link
-            href="/search"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-gray-200 transition-colors hover:bg-white/10"
-          >
-            <Search size={16} />
-            Open Search
-          </Link>
-        </div>
-
-        <div className="mt-8 rounded-2xl border border-white/8 bg-black/20 p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-200">
-            <Compass size={16} className="text-cyan-400" />
-            Popular routes
+    <main className="site-shell flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="w-full max-w-3xl">
+        <SurfacePanel className="overflow-hidden p-6 sm:p-10">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[rgba(196,160,96,0.28)] bg-[rgba(196,160,96,0.12)] px-3 py-1 text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">
+            <RiCompass3Line size={14} />
+            Route Missing
           </div>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <Link href="/homepage" className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-gray-300 hover:bg-white/10">
-              /homepage
-            </Link>
-            <Link href="/search" className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-gray-300 hover:bg-white/10">
-              /search
-            </Link>
-            <Link href="/continue-watching" className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-gray-300 hover:bg-white/10">
-              /continue-watching
-            </Link>
+          <EmptyState
+            icon={RiCompass3Line}
+            title="That anime page does not exist."
+            description="The link may have moved, the route may be broken, or the title was removed from the current path."
+            action={
+              <div className="flex flex-wrap justify-center gap-3">
+                <Link href="/" className="button-primary">
+                  <RiHome5Line size={18} />
+                  Go Home
+                </Link>
+                <Link href="/search" className="button-secondary">
+                  <RiSearchLine size={18} />
+                  Open Search
+                </Link>
+              </div>
+            }
+          />
+
+          <div className="mt-8 rounded-[1.35rem] border border-white/8 bg-[rgba(8,10,14,0.5)] p-5">
+            <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-muted)]">Popular Routes</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link href="/homepage" className="tag-chip">/homepage</Link>
+              <Link href="/search" className="tag-chip">/search</Link>
+              <Link href="/continue-watching" className="tag-chip">/continue-watching</Link>
+            </div>
           </div>
-        </div>
-      </section>
+        </SurfacePanel>
+      </div>
     </main>
   );
 }

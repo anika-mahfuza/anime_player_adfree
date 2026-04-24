@@ -1,29 +1,42 @@
 'use client';
 
-import { useEffect, useMemo, useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, Clapperboard, Clock, Loader2, Play, Sparkles, Star, Tv } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import {
+  RiArrowLeftSLine,
+  RiCalendarLine,
+  RiClapperboardLine,
+  RiLoader4Line,
+  RiPlayMiniFill,
+  RiSparkling2Fill,
+  RiStarFill,
+  RiTimeLine,
+  RiTv2Line,
+} from '@remixicon/react';
+import { MediaCard, MetaPill, QuickActionLink, SectionHeading, StatusBadge, SurfacePanel, TagChip } from '@/components/ui';
+import { AnimeDetailsSkeleton } from '@/components/skeletons';
 import { getWatchSequence, useWatchProgress } from '@/hooks/useWatchProgress';
 import { apiUrl } from '@/lib/apiBase';
+import { formatRelationType, formatSeason, mediaTitle, stripHtml } from '@/lib/media';
 import { animeHref, watchHref } from '@/lib/routes';
 
 async function anilist(query, variables = {}) {
   try {
-    const r = await fetch(apiUrl('/api/anilist'), {
+    const response = await fetch(apiUrl('/api/anilist'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables }),
     });
-    if (!r.ok) {
-      if (r.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
-      throw new Error(`HTTP ${r.status}`);
+    if (!response.ok) {
+      if (response.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
+      throw new Error(`HTTP ${response.status}`);
     }
-    const j = await r.json();
-    if (j.errors) throw new Error(j.errors[0].message);
-    return j.data;
-  } catch (err) {
-    console.error('AniList fetch error:', err.message);
+    const payload = await response.json();
+    if (payload.errors) throw new Error(payload.errors[0].message);
+    return payload.data;
+  } catch (error) {
+    console.error('AniList fetch error:', error.message);
     throw new Error('Failed to fetch anime details. Please try again.');
   }
 }
@@ -86,82 +99,6 @@ const ANIME_DETAILS_QUERY = `
   }
 `;
 
-function mediaTitle(m) {
-  return m?.title?.english || m?.title?.romaji || 'Unknown';
-}
-
-function formatStatus(s) {
-  return { RELEASING: 'Airing', FINISHED: 'Finished', NOT_YET_RELEASED: 'Upcoming', CANCELLED: 'Cancelled', HIATUS: 'On Hiatus' }[s] ?? s;
-}
-
-function formatSeason(s, y) {
-  if (!s && !y) return null;
-  const season = s ? s[0] + s.slice(1).toLowerCase() : '';
-  return [season, y].filter(Boolean).join(' ');
-}
-
-function formatRelationType(relationType) {
-  return {
-    CURRENT: 'Current Season',
-    PREQUEL: 'Prequel',
-    SEQUEL: 'Sequel',
-    SIDE_STORY: 'Side Story',
-    SPIN_OFF: 'Spin-Off',
-    ALTERNATIVE: 'Alternative',
-    COMPILATION: 'Compilation',
-    OTHER: 'Related',
-  }[relationType] ?? 'Related';
-}
-
-function Badge({ children }) {
-  return (
-    <span className="px-2.5 py-1 rounded-full bg-white/8 border border-white/10 text-xs font-medium text-gray-200">
-      {children}
-    </span>
-  );
-}
-
-function AnimeCard({ anime }) {
-  const title = mediaTitle(anime);
-  const img = anime.coverImage?.extraLarge ?? anime.coverImage?.large;
-  const score = anime.meanScore ? (anime.meanScore / 10).toFixed(1) : null;
-  const format = anime.format ? anime.format.replace(/_/g, ' ') : null;
-
-  return (
-    <Link
-      href={animeHref(anime.id)}
-      className="group relative flex flex-col rounded-2xl overflow-hidden bg-gray-900 border border-white/5 hover:border-rose-500/40 hover:shadow-xl hover:shadow-rose-950/30 transition-all duration-200"
-    >
-      <div className="relative aspect-[2/3] overflow-hidden bg-gray-800">
-        {img
-          ? <img src={img} alt={title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy" />
-          : <div className="w-full h-full flex items-center justify-center text-gray-600"><Tv size={30} /></div>
-        }
-        {score && (
-          <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/70 px-1.5 py-0.5 rounded-md text-yellow-400 text-xs font-bold">
-            <Star size={10} fill="currentColor" />{score}
-          </div>
-        )}
-        {format && (
-          <div className="absolute bottom-2 right-2 bg-rose-600/90 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase text-white">
-            {format}
-          </div>
-        )}
-      </div>
-      <div className="p-3 flex flex-col gap-1.5 flex-1">
-        <h3 className="text-sm font-semibold text-gray-100 leading-snug line-clamp-2 group-hover:text-white transition-colors">
-          {title}
-        </h3>
-        <div className="flex flex-wrap gap-1 mt-auto pt-1">
-          {anime.genres?.slice(0, 2).map((genre) => (
-            <span key={genre} className="px-1.5 py-0.5 rounded bg-white/5 text-gray-400 text-[10px]">{genre}</span>
-          ))}
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 function SequenceCard({ anime, isCurrent = false, index = 0 }) {
   const title = mediaTitle(anime);
   const relationLabel = formatRelationType(anime.relationType);
@@ -170,27 +107,25 @@ function SequenceCard({ anime, isCurrent = false, index = 0 }) {
   return (
     <Link
       href={animeHref(anime.id)}
-      className={`flex items-center gap-3 rounded-xl border p-3 transition-all ${
-        isCurrent
-          ? 'border-rose-500/35 bg-rose-500/10'
-          : 'border-white/8 bg-white/5 hover:bg-white/8 hover:border-white/15'
-      }`}
+      className={`surface-panel flex items-center gap-4 p-4 ${isCurrent ? '!border-2 !border-[var(--color-brass)] shadow-[0_0_0_1px_rgba(196,160,96,0.2)]' : ''}`}
     >
-      {anime.coverImage?.large && (
-        <img src={anime.coverImage.large} alt={title} className="w-12 h-16 object-cover rounded-lg shrink-0" loading="lazy" />
+      {anime.coverImage?.large ? (
+        <img src={anime.coverImage.large} alt={title} className="h-20 w-14 rounded-[1rem] object-cover" loading="lazy" />
+      ) : (
+        <div className="flex h-20 w-14 items-center justify-center rounded-[1rem] bg-[var(--color-ink)] text-[var(--color-muted)]">
+          <RiTv2Line size={22} />
+        </div>
       )}
-      <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${
-        isCurrent ? 'bg-rose-500/25 text-rose-200' : 'bg-white/8 text-gray-300'
-      }`}>
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${isCurrent ? 'border-[var(--color-brass)] bg-[rgba(196,160,96,0.14)] text-[var(--color-ivory)]' : 'border-white/10 bg-white/5 text-[var(--color-mist)]'}`}>
         {index + 1}
       </div>
       <div className="min-w-0 flex-1">
-        <p className={`text-sm font-semibold truncate ${isCurrent ? 'text-rose-200' : 'text-gray-100'}`}>{title}</p>
-        <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[10px]">
-          <span className={`${isCurrent ? 'text-rose-200/80' : 'text-gray-400'}`}>{relationLabel}</span>
-          {formatLabel && <span className="text-gray-500">{formatLabel}</span>}
-          {anime.seasonYear && <span className="text-gray-500">{anime.seasonYear}</span>}
-          {anime.episodes && <span className="text-gray-500">{anime.episodes} eps</span>}
+        <p className={`truncate text-sm font-medium ${isCurrent ? 'text-[var(--color-ivory)]' : 'text-[var(--color-mist)]'}`}>{title}</p>
+        <div className="mt-2 flex flex-wrap gap-2 text-[0.68rem] uppercase tracking-[0.12em] text-[var(--color-muted)]">
+          <span>{relationLabel}</span>
+          {formatLabel ? <span>{formatLabel}</span> : null}
+          {anime.seasonYear ? <span>{anime.seasonYear}</span> : null}
+          {anime.episodes ? <span>{anime.episodes} eps</span> : null}
         </div>
       </div>
     </Link>
@@ -216,14 +151,12 @@ function AnimeDetailsInner() {
     anilist(ANIME_DETAILS_QUERY, { id: Number.parseInt(id, 10) })
       .then((data) => {
         if (cancelled) return;
-        if (!data?.Media) {
-          throw new Error('Anime not found');
-        }
+        if (!data?.Media) throw new Error('Anime not found');
         setAnime(data.Media);
       })
-      .catch((err) => {
+      .catch((nextError) => {
         if (cancelled) return;
-        setError(err.message || 'Failed to load anime details');
+        setError(nextError.message || 'Failed to load anime details');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -245,41 +178,34 @@ function AnimeDetailsInner() {
 
   if (!id) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400">
-        Missing anime id.
-      </div>
+      <main className="site-shell flex min-h-screen items-center justify-center px-4">
+        <SurfacePanel className="px-6 py-5 text-sm text-[var(--color-muted)]">Missing anime id.</SurfacePanel>
+      </main>
     );
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <Loader2 size={34} className="animate-spin text-rose-500" />
-      </div>
-    );
+    return <AnimeDetailsSkeleton />;
   }
 
   if (error || !anime) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-gray-300 max-w-lg">
-          <p className="text-lg font-semibold text-white">Could not load this anime</p>
-          <p className="mt-2 text-sm text-gray-400">{error || 'Unknown error'}</p>
-          <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link href="/" className="px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-500 transition-colors">
-              Go Home
-            </Link>
-            <Link href="/search" className="px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-sm font-semibold text-gray-200 hover:bg-white/10 transition-colors">
-              Search Anime
-            </Link>
+      <main className="site-shell flex min-h-screen items-center justify-center px-4 py-10">
+        <SurfacePanel className="w-full max-w-2xl p-6 sm:p-8">
+          <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">Detail Page</p>
+          <h1 className="mt-3 font-[family:var(--font-display)] text-4xl text-[var(--color-ivory)]">Could not load this anime</h1>
+          <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">{error || 'Unknown error'}</p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Link href="/" className="button-primary">Go Home</Link>
+            <Link href="/search" className="button-secondary">Search Anime</Link>
           </div>
-        </div>
-      </div>
+        </SurfacePanel>
+      </main>
     );
   }
 
   const title = mediaTitle(anime);
-  const description = anime.description?.replace(/<[^>]+>/g, '') ?? '';
+  const description = stripHtml(anime.description);
   const score = anime.meanScore ? (anime.meanScore / 10).toFixed(1) : null;
   const studio = anime.studios?.nodes?.[0]?.name;
   const seasonLabel = formatSeason(anime.season, anime.seasonYear);
@@ -287,124 +213,114 @@ function AnimeDetailsInner() {
   const watchLabel = saved?.episode > 1 ? `Continue from Episode ${saved.episode}` : 'Play Now';
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
-      <section className="relative overflow-hidden border-b border-white/5">
+    <main className="site-shell">
+      <section className="relative overflow-hidden border-b border-white/6">
         <div className="absolute inset-0">
           {anime.bannerImage ? (
-            <img src={anime.bannerImage} alt="" className="w-full h-full object-cover" />
+            <img src={anime.bannerImage} alt="" className="h-full w-full object-cover" />
           ) : anime.coverImage?.extraLarge ? (
-            <img src={anime.coverImage.extraLarge} alt="" className="w-full h-full object-cover" />
+            <img src={anime.coverImage.extraLarge} alt="" className="h-full w-full object-cover" />
           ) : null}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/70 to-gray-950" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(244,63,94,0.22),transparent_38%),radial-gradient(circle_at_78%_20%,rgba(34,211,238,0.12),transparent_28%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.25),rgba(8,10,14,0.92))]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(196,160,96,0.18),transparent_28%),radial-gradient(circle_at_85%_15%,rgba(139,40,61,0.28),transparent_30%)]" />
         </div>
 
-        <div className="relative max-w-screen-xl mx-auto px-4 py-6 sm:py-10">
-          <div className="flex items-center gap-3 mb-8">
-            <Link href="/" className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-gray-100 hover:bg-black/40 transition-colors">
-              <ArrowLeft size={15} /> Home
+        <div className="relative mx-auto max-w-screen-xl px-4 py-6 sm:px-6 sm:py-10">
+          <div className="mb-8 flex flex-wrap items-center gap-3">
+            <Link href="/" className="button-ghost">
+              <RiArrowLeftSLine size={18} />
+              Home
             </Link>
-            <Link href="/search" className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-gray-100 hover:bg-black/40 transition-colors">
-              <Sparkles size={15} /> Search
+            <Link href="/search" className="button-secondary">
+              <RiSparkling2Fill size={18} />
+              Search
             </Link>
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
-            <div className="w-40 sm:w-52 shrink-0">
+          <div className="grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-end">
+            <div className="max-w-[19rem]">
               {anime.coverImage?.extraLarge ? (
-                <img src={anime.coverImage.extraLarge} alt={title} className="w-full aspect-[2/3] object-cover rounded-2xl shadow-2xl shadow-black/40" />
+                <img
+                  src={anime.coverImage.extraLarge}
+                  alt={title}
+                  className="aspect-[2/3] w-full rounded-[2rem] border border-white/10 object-cover shadow-[0_30px_90px_rgba(0,0,0,0.45)]"
+                />
               ) : null}
             </div>
 
-            <div className="flex-1 min-w-0">
-              <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-rose-300/90">
-                <Clapperboard size={13} /> Anime Details
-              </div>
-
-              <h1 className="mt-3 text-3xl sm:text-5xl font-black tracking-tight text-white">
+            <div className="max-w-4xl">
+              <p className="text-[0.72rem] uppercase tracking-[0.24em] text-[var(--color-brass)]">Anime Detail</p>
+              <h1 className="mt-3 font-[family:var(--font-display)] text-4xl leading-tight text-[var(--color-ivory)] sm:text-6xl">
                 {title}
               </h1>
+              {anime.title?.native ? <p className="mt-3 text-sm text-[var(--color-muted)]">{anime.title.native}</p> : null}
 
-              {anime.title?.native ? (
-                <p className="mt-2 text-sm text-gray-400">{anime.title.native}</p>
-              ) : null}
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {score && <Badge><span className="inline-flex items-center gap-1 text-yellow-300"><Star size={12} fill="currentColor" /> {score}</span></Badge>}
-                {anime.format && <Badge>{anime.format.replace(/_/g, ' ')}</Badge>}
-                {anime.status && <Badge>{formatStatus(anime.status)}</Badge>}
-                {anime.episodes && <Badge><span className="inline-flex items-center gap-1"><Tv size={11} /> {anime.episodes} eps</span></Badge>}
-                {anime.duration && <Badge><span className="inline-flex items-center gap-1"><Clock size={11} /> {anime.duration}m</span></Badge>}
-                {seasonLabel && <Badge><span className="inline-flex items-center gap-1"><Calendar size={11} /> {seasonLabel}</span></Badge>}
-                {studio && <Badge>{studio}</Badge>}
+              <div className="mt-5 flex flex-wrap gap-2">
+                {score ? <MetaPill icon={RiStarFill} accent="var(--color-brass)">{score}</MetaPill> : null}
+                {anime.format ? <MetaPill icon={RiClapperboardLine}>{anime.format.replace(/_/g, ' ')}</MetaPill> : null}
+                {anime.episodes ? <MetaPill icon={RiTv2Line}>{anime.episodes} eps</MetaPill> : null}
+                {anime.duration ? <MetaPill icon={RiTimeLine}>{anime.duration}m</MetaPill> : null}
+                {seasonLabel ? <MetaPill icon={RiCalendarLine}>{seasonLabel}</MetaPill> : null}
+                {studio ? <MetaPill icon={RiSparkling2Fill}>{studio}</MetaPill> : null}
+                <StatusBadge status={anime.status} />
               </div>
 
               {description ? (
-                <p className="mt-5 max-w-3xl text-sm sm:text-base leading-relaxed text-gray-300">
+                <p className="mt-6 max-w-3xl text-sm leading-7 text-[var(--color-mist)] sm:text-base">
                   {description}
                 </p>
               ) : null}
 
               {anime.genres?.length ? (
-                <div className="mt-5 flex flex-wrap gap-2">
+                <div className="mt-6 flex flex-wrap gap-2">
                   {anime.genres.map((genre) => (
-                    <span key={genre} className="px-2.5 py-1 rounded-full bg-rose-900/35 text-rose-200 text-xs border border-rose-500/15">
-                      {genre}
-                    </span>
+                    <TagChip key={genre}>{genre}</TagChip>
                   ))}
                 </div>
               ) : null}
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href={watchHref(anime.id)}
-                  className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-5 py-3 text-sm font-semibold text-white hover:bg-rose-500 transition-colors"
-                >
-                  <Play size={15} fill="currentColor" />
+              <div className="mt-8 flex flex-wrap gap-3">
+                <QuickActionLink href={watchHref(anime.id)} primary icon={RiPlayMiniFill}>
                   {watchLabel}
-                </Link>
-                <Link
-                  href={`/search?q=${encodeURIComponent(title)}`}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-gray-100 hover:bg-white/10 transition-colors"
-                >
+                </QuickActionLink>
+                <QuickActionLink href={`/search?q=${encodeURIComponent(title)}`} icon={RiSparkling2Fill}>
                   Explore Similar
-                </Link>
+                </QuickActionLink>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="max-w-screen-xl mx-auto px-4 py-8 space-y-8">
+      <section className="mx-auto max-w-screen-xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
         {watchSequence.length > 1 ? (
-          <div className="rounded-2xl border border-white/8 bg-white/5 p-4 sm:p-5">
-            <div className="flex items-center gap-2 mb-1">
-              <Clapperboard size={16} className="text-rose-400" />
-              <h2 className="text-lg font-bold text-gray-100">Seasons</h2>
-            </div>
-            <p className="mb-4 text-sm text-gray-400">
-              Main seasons, OVAs, movies, and side stories in watch order.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <SurfacePanel className="p-5 sm:p-6">
+            <SectionHeading
+              eyebrow="Watch Order"
+              title="Seasons and related entries"
+              subtitle="Main seasons, OVAs, side stories, and sequels in one polished watch-order panel."
+            />
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
               {watchSequence.map((item, index) => (
                 <SequenceCard key={item.id} anime={item} isCurrent={item.id === anime.id} index={index} />
               ))}
             </div>
-          </div>
+          </SurfacePanel>
         ) : null}
 
         {recommendations.length ? (
-          <div className="rounded-2xl border border-white/8 bg-white/5 p-4 sm:p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles size={16} className="text-cyan-400" />
-              <h2 className="text-lg font-bold text-gray-100">Similar Recommendations</h2>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <SurfacePanel className="p-5 sm:p-6">
+            <SectionHeading
+              eyebrow="Recommended"
+              title="You may also want to watch"
+              subtitle="High-signal recommendations pulled from AniList relations and audience overlap."
+            />
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {recommendations.map((item) => (
-                <AnimeCard key={item.id} anime={item} />
+                <MediaCard key={item.id} anime={item} />
               ))}
             </div>
-          </div>
+          </SurfacePanel>
         ) : null}
       </section>
     </main>
@@ -413,11 +329,11 @@ function AnimeDetailsInner() {
 
 export default function AnimeDetailsPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <Loader2 size={34} className="animate-spin text-rose-500" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <AnimeDetailsSkeleton />
+      }
+    >
       <AnimeDetailsInner />
     </Suspense>
   );

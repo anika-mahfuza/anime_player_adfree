@@ -1,54 +1,47 @@
 'use client';
 
 import Link from 'next/link';
-import { Home, RefreshCcw, Search, TriangleAlert } from 'lucide-react';
+import { RiAlertLine, RiHome5Line, RiRefreshLine, RiSearchLine } from '@remixicon/react';
+import { EmptyState, SurfacePanel } from '@/components/ui';
 
 export default function Error({ error, reset }) {
   return (
-    <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4">
-      <section className="w-full max-w-2xl rounded-3xl border border-white/10 bg-white/5 p-8 sm:p-10 shadow-2xl shadow-black/30">
-        <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-200">
-          <TriangleAlert size={14} />
-          Something went wrong
-        </div>
-
-        <h1 className="mt-5 text-3xl sm:text-4xl font-black tracking-tight text-white">
-          This page hit an unexpected error.
-        </h1>
-        <p className="mt-3 max-w-xl text-sm sm:text-base text-gray-400 leading-relaxed">
-          Try the page again, go back home, or search for the anime directly.
-        </p>
-
-        {error?.message ? (
-          <div className="mt-5 rounded-2xl border border-white/8 bg-black/25 p-4 text-xs text-gray-400">
-            {error.message}
+    <main className="site-shell flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="w-full max-w-3xl">
+        <SurfacePanel className="overflow-hidden p-6 sm:p-10">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[rgba(183,82,106,0.35)] bg-[rgba(139,40,61,0.18)] px-3 py-1 text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-ivory)]">
+            <RiAlertLine size={14} />
+            Runtime Interruption
           </div>
-        ) : null}
+          <EmptyState
+            icon={RiAlertLine}
+            title="This page hit an unexpected error."
+            description="Try the page again, go back to the homepage, or search directly for the anime you were looking for."
+            action={
+              <div className="flex flex-wrap justify-center gap-3">
+                <button onClick={reset} className="button-primary">
+                  <RiRefreshLine size={18} />
+                  Try Again
+                </button>
+                <Link href="/" className="button-secondary">
+                  <RiHome5Line size={18} />
+                  Home
+                </Link>
+                <Link href="/search" className="button-secondary">
+                  <RiSearchLine size={18} />
+                  Search
+                </Link>
+              </div>
+            }
+          />
 
-        <div className="mt-8 grid gap-3 sm:grid-cols-3">
-          <button
-            onClick={reset}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-rose-500"
-          >
-            <RefreshCcw size={16} />
-            Try Again
-          </button>
-          <Link
-            href="/"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-gray-200 transition-colors hover:bg-white/10"
-          >
-            <Home size={16} />
-            Home
-          </Link>
-          <Link
-            href="/search"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-gray-200 transition-colors hover:bg-white/10"
-          >
-            <Search size={16} />
-            Search
-          </Link>
-        </div>
-      </section>
+          {error?.message ? (
+            <div className="mt-8 rounded-[1.35rem] border border-white/8 bg-[rgba(8,10,14,0.5)] p-4 text-sm leading-6 text-[var(--color-muted)]">
+              {error.message}
+            </div>
+          ) : null}
+        </SurfacePanel>
+      </div>
     </main>
   );
 }
