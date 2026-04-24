@@ -8,11 +8,11 @@ import {
   RiArrowRightSLine,
   RiCalendarLine,
   RiFireFill,
-  RiLoader4Line,
   RiPlayMiniFill,
   RiSearchLine,
   RiSparkling2Fill,
   RiTrophyLine,
+  RiTv2Line,
 } from '@remixicon/react';
 import {
   ContinueBadge,
@@ -28,10 +28,12 @@ import {
   UiIcons,
   cx,
 } from '@/components/ui';
-import { HomePageSkeleton } from '@/components/skeletons';
+import { ContinueRowSkeleton, HomePageSkeleton, MediaGridSkeleton, ShelfSkeleton, SkeletonBlock } from '@/components/skeletons';
+import { useLazyMount } from '@/hooks/useLazyMount';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
-import { apiUrl } from '@/lib/apiBase';
+import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
 import { mediaTitle } from '@/lib/media';
+import { pacedJsonFetch } from '@/lib/requestScheduler';
 import { animeHref, watchHref } from '@/lib/routes';
 
 const CRITICAL_CACHE_KEY = 'home_critical_v2';
@@ -59,26 +61,6 @@ function setCache(key, data) {
   try {
     sessionStorage.setItem(key, JSON.stringify({ data, expiry: Date.now() + HOME_CACHE_TTL_MS }));
   } catch {}
-}
-
-async function anilist(query, variables = {}) {
-  try {
-    const response = await fetch(apiUrl('/api/anilist'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!response.ok) {
-      if (response.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    if (payload.errors) throw new Error(payload.errors[0].message);
-    return payload.data;
-  } catch (error) {
-    console.error('AniList fetch error:', error.message);
-    throw new Error('Failed to fetch data. Please try again.');
-  }
 }
 
 const CRITICAL_QUERY = `
@@ -218,9 +200,10 @@ function mediaIdentity(media, index = 0) {
 }
 
 async function fetchJikanList(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Jikan HTTP ${response.status}`);
-  const payload = await response.json();
+  const payload = await pacedJsonFetch(url, undefined, {
+    key: `jikan:${url}`,
+    cacheTtlMs: 10 * 60 * 1000,
+  });
   return Array.isArray(payload?.data) ? payload.data.map(normalizeJikanAnime).filter(Boolean) : [];
 }
 
@@ -290,11 +273,15 @@ function SearchBar() {
       return;
     }
     setLoading(true);
+    setOpen(true);
     try {
-      const data = await anilist(SUGGEST_QUERY, { s: term });
+      const data = await anilistRequest(SUGGEST_QUERY, { s: term }, {
+        cacheTtlMs: 45 * 1000,
+        key: `home:suggest:${term.trim().toLowerCase()}`,
+      });
       const media = (data?.Page?.media || []).filter((item) => item.id || item.idMal);
       setResults(media);
-      setOpen(media.length > 0);
+      setOpen(media.length > 0 || term.trim().length > 0);
     } catch {
       setResults([]);
     } finally {
@@ -306,7 +293,7 @@ function SearchBar() {
     const value = event.target.value;
     setQuery(value);
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => fetchSuggestions(value), 280);
+    timerRef.current = setTimeout(() => fetchSuggestions(value), 420);
   };
 
   const handleSubmit = (event) => {
@@ -333,41 +320,57 @@ function SearchBar() {
         placeholder="Search by title, genre, or season..."
       />
 
-      {open && results.length > 0 ? (
-        <div className="absolute left-0 right-0 top-full z-50 mt-3 overflow-hidden rounded-[1.6rem] border border-white/8 bg-[rgba(8,10,14,0.96)] shadow-[0_24px_70px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
-          {results.map((anime) => {
-            const title = mediaTitle(anime);
-            const score = anime.meanScore ? (anime.meanScore / 10).toFixed(1) : null;
-
-            return (
-              <Link
-                key={anime.id || anime.idMal}
-                href={mediaHref(anime)}
-                onClick={() => {
-                  setOpen(false);
-                  setQuery('');
-                }}
-                className="flex items-center gap-4 border-b border-white/6 px-4 py-3 last:border-b-0 hover:bg-white/5"
-              >
-                {anime.coverImage?.medium ? (
-                  <img src={anime.coverImage.medium} alt={title} className="h-14 w-10 rounded-xl object-cover" />
-                ) : (
-                  <div className="flex h-14 w-10 items-center justify-center rounded-xl bg-[var(--color-ink)] text-[var(--color-muted)]">
-                    <UiIcons.tv size={18} />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-[var(--color-ivory)]">{title}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.68rem] uppercase tracking-[0.12em] text-[var(--color-muted)]">
-                    {score ? <span className="inline-flex items-center gap-1 text-[var(--color-brass)]"><UiIcons.star size={12} />{score}</span> : null}
-                    {anime.episodes ? <span>{anime.episodes} eps</span> : null}
-                    {anime.status ? <span>{anime.status === 'RELEASING' ? 'Airing' : anime.status}</span> : null}
+      {open && (loading || results.length > 0) ? (
+        <div className="absolute left-0 right-0 top-full z-50 mt-3 max-h-[min(22rem,calc(100vh-8rem))] overflow-y-auto overflow-x-hidden rounded-[1.35rem] border border-white/8 bg-[rgba(8,10,14,0.96)] shadow-[0_24px_70px_rgba(0,0,0,0.4)] backdrop-blur-2xl sm:rounded-[1.6rem]">
+          {loading ? (
+            Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="border-b border-white/6 px-4 py-3 last:border-b-0">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <SkeletonBlock className="block h-14 w-10 shrink-0" borderRadius={12} />
+                  <div className="min-w-0 flex-1">
+                    <SkeletonBlock className="mb-2 block max-w-[12rem]" height={14} />
+                    <SkeletonBlock className="block max-w-[9rem]" height={10} />
                   </div>
                 </div>
-                <UiIcons.arrowRight size={18} className="text-[var(--color-muted)]" />
-              </Link>
-            );
-          })}
+              </div>
+            ))
+          ) : (
+            <>
+              {results.map((anime) => {
+                const title = mediaTitle(anime);
+                const score = anime.meanScore ? (anime.meanScore / 10).toFixed(1) : null;
+
+                return (
+                  <Link
+                    key={anime.id || anime.idMal}
+                    href={mediaHref(anime)}
+                    onClick={() => {
+                      setOpen(false);
+                      setQuery('');
+                    }}
+                    className="flex items-center gap-3 border-b border-white/6 px-4 py-3 last:border-b-0 hover:bg-white/5 sm:gap-4"
+                  >
+                    {anime.coverImage?.medium ? (
+                      <img src={anime.coverImage.medium} alt={title} className="h-14 w-10 rounded-xl object-cover" />
+                    ) : (
+                      <div className="flex h-14 w-10 items-center justify-center rounded-xl bg-[var(--color-ink)] text-[var(--color-muted)]">
+                        <UiIcons.tv size={18} />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-[var(--color-ivory)]">{title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.68rem] uppercase tracking-[0.12em] text-[var(--color-muted)]">
+                        {score ? <span className="inline-flex items-center gap-1 text-[var(--color-brass)]"><UiIcons.star size={12} />{score}</span> : null}
+                        {anime.episodes ? <span>{anime.episodes} eps</span> : null}
+                        {anime.status ? <span>{anime.status === 'RELEASING' ? 'Airing' : anime.status}</span> : null}
+                      </div>
+                    </div>
+                    <UiIcons.arrowRight size={18} className="text-[var(--color-muted)]" />
+                  </Link>
+                );
+              })}
+            </>
+          )}
           <button
             onClick={handleSubmit}
             className="flex w-full items-center justify-between px-4 py-3 text-sm text-[var(--color-mist)] hover:bg-white/5"
@@ -419,8 +422,17 @@ function ContinueCard({ data }) {
 
 function ContinueWatchingRow() {
   const { items, loading } = useContinueWatching(6);
+  const railRef = useRef(null);
 
-  if (loading || items.length === 0) return null;
+  const scrollRail = useCallback((direction) => {
+    const element = railRef.current;
+    if (!element) return;
+    const amount = Math.max(260, Math.floor(element.clientWidth * 0.92));
+    element.scrollBy({ left: direction * amount, behavior: 'smooth' });
+  }, []);
+
+  if (loading) return <ContinueRowSkeleton />;
+  if (items.length === 0) return null;
 
   return (
     <section className="mx-auto max-w-screen-xl px-4 pt-6 sm:px-6">
@@ -431,10 +443,28 @@ function ContinueWatchingRow() {
           subtitle="Quick return cards for unfinished episodes and saved resume points."
           action={<Link href="/continue-watching" className="button-secondary">View All</Link>}
         />
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {items.map((item) => (
-            <ContinueCard key={`${item.id}-${item.episode}`} data={item} />
-          ))}
+        <div className="relative mt-5 sm:mt-6">
+          <button
+            aria-label="Scroll continue watching left"
+            onClick={() => scrollRail(-1)}
+            className="button-ghost absolute left-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+          >
+            <RiArrowLeftSLine size={18} />
+          </button>
+          <button
+            aria-label="Scroll continue watching right"
+            onClick={() => scrollRail(1)}
+            className="button-ghost absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+          >
+            <RiArrowRightSLine size={18} />
+          </button>
+          <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
+            {items.map((item) => (
+              <div key={`${item.id}-${item.episode}`} className="rail-card">
+                <ContinueCard data={item} />
+              </div>
+            ))}
+          </div>
         </div>
       </SurfacePanel>
     </section>
@@ -443,12 +473,9 @@ function ContinueWatchingRow() {
 
 function HeroSpotlight({ list }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const pauseRef = useRef(false);
-
   useEffect(() => {
     if (list.length <= 1) return undefined;
     const interval = setInterval(() => {
-      if (pauseRef.current) return;
       setActiveIndex((current) => (current + 1) % list.length);
     }, 5500);
     return () => clearInterval(interval);
@@ -461,29 +488,43 @@ function HeroSpotlight({ list }) {
   const title = mediaTitle(active);
 
   return (
-    <section className="mx-auto max-w-screen-xl px-4 pt-8 sm:px-6">
+    <section className="mx-auto max-w-screen-xl px-4 pt-7 sm:px-6 sm:pt-8">
       <SurfacePanel className="relative overflow-hidden px-0 py-0">
-        <div className="relative min-h-[34rem] overflow-hidden rounded-[1.75rem]">
+        <div className="relative min-h-[28rem] overflow-hidden rounded-[1.35rem] sm:min-h-[34rem] sm:rounded-[1.75rem]">
           {backdrop ? <img src={backdrop} alt={title} className="absolute inset-0 h-full w-full object-cover" /> : null}
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(8,10,14,0.92)_0%,rgba(8,10,14,0.72)_46%,rgba(8,10,14,0.45)_100%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_16%,rgba(196,160,96,0.14),transparent_24%),radial-gradient(circle_at_80%_18%,rgba(139,40,61,0.18),transparent_26%)]" />
 
-          <div className="relative grid min-h-[34rem] gap-6 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.3fr)_22rem] lg:p-10">
+          <div className="relative grid min-h-[28rem] gap-5 p-4 sm:min-h-[34rem] sm:gap-6 sm:p-8 lg:p-10">
             <div className="flex max-w-3xl flex-col justify-end">
-              <div className="mb-4 inline-flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.22em] text-[var(--color-brass)]">
+              <div className="mb-3 inline-flex items-center gap-2 text-[0.66rem] uppercase tracking-[0.18em] text-[var(--color-brass)] sm:mb-4 sm:text-[0.72rem] sm:tracking-[0.22em]">
                 <RiFireFill size={15} />
                 Featured Tonight
               </div>
-              <h1 className="max-w-3xl font-[family:var(--font-display)] text-4xl leading-[1.02] text-[var(--color-ivory)] sm:text-6xl">
+              <h1 className="max-w-3xl font-[family:var(--font-display)] text-3xl leading-[1.05] text-[var(--color-ivory)] sm:text-5xl lg:text-6xl">
                 {title}
               </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--color-mist)] sm:text-base">
-                Curated spotlight picks drawn from the strongest airing, trending, and high-score signals in the catalogue.
-              </p>
-              <div className="mt-5">
+              <div className="mt-4 sm:mt-5">
                 <HeroMetaRow anime={active} />
               </div>
-              <div className="mt-8 flex flex-wrap gap-3">
+              {(active?.genres?.length > 0 || active?.season || active?.nextAiringEpisode) && (
+                <div className="mt-4 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  {active.season && active.seasonYear && (
+                    <MetaPill icon={RiCalendarLine}>
+                      {active.season.charAt(0) + active.season.slice(1).toLowerCase()} {active.seasonYear}
+                    </MetaPill>
+                  )}
+                  {active.nextAiringEpisode?.episode && (
+                    <MetaPill icon={RiTv2Line} accent="var(--color-brass)">
+                      Next: EP {active.nextAiringEpisode.episode}
+                    </MetaPill>
+                  )}
+                  {(active.genres || []).slice(0, 4).map((genre) => (
+                    <TagChip key={genre}>{genre}</TagChip>
+                  ))}
+                </div>
+              )}
+              <div className="mt-6 flex flex-col gap-2.5 sm:mt-8 sm:flex-row sm:flex-wrap sm:gap-3">
                 <QuickActionLink href={mediaHref(active)} primary icon={RiPlayMiniFill}>
                   View Details
                 </QuickActionLink>
@@ -493,57 +534,7 @@ function HeroSpotlight({ list }) {
               </div>
             </div>
 
-            <div className="flex flex-col justify-end gap-3">
-              <div className="mb-1 flex items-center justify-between">
-                <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-muted)]">Rotating Highlights</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setActiveIndex((current) => (current - 1 + list.length) % list.length)}
-                    className="button-ghost !rounded-full !border !border-white/10 !bg-[rgba(8,10,14,0.45)] !px-3"
-                    aria-label="Previous featured anime"
-                  >
-                    <RiArrowLeftSLine size={18} />
-                  </button>
-                  <button
-                    onClick={() => setActiveIndex((current) => (current + 1) % list.length)}
-                    className="button-ghost !rounded-full !border !border-white/10 !bg-[rgba(8,10,14,0.45)] !px-3"
-                    aria-label="Next featured anime"
-                  >
-                    <RiArrowRightSLine size={18} />
-                  </button>
-                </div>
-              </div>
 
-              {list.map((anime, index) => {
-                const slideTitle = mediaTitle(anime);
-                const selected = index === activeIndex;
-                return (
-                  <button
-                    key={`${anime.id || `mal-${anime.idMal}`}-hero`}
-                    onClick={() => setActiveIndex(index)}
-                    onMouseEnter={() => { pauseRef.current = true; }}
-                    onMouseLeave={() => { pauseRef.current = false; }}
-                    className={cx(
-                      'rounded-[1.35rem] border px-4 py-4 text-left transition',
-                      selected
-                        ? 'border-[rgba(196,160,96,0.3)] bg-[rgba(255,255,255,0.08)]'
-                        : 'border-white/8 bg-[rgba(8,10,14,0.38)] hover:bg-[rgba(255,255,255,0.06)]'
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-medium text-[var(--color-ivory)]">{slideTitle}</p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {anime.format ? <TagChip>{anime.format.replace(/_/g, ' ')}</TagChip> : null}
-                          {anime.status ? <TagChip>{anime.status === 'RELEASING' ? 'Airing' : anime.status.replace(/_/g, ' ')}</TagChip> : null}
-                        </div>
-                      </div>
-                      <span className={cx('h-2.5 w-2.5 rounded-full', selected ? 'bg-[var(--color-brass)]' : 'bg-white/20')} />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
           </div>
         </div>
       </SurfacePanel>
@@ -567,7 +558,7 @@ function Shelf({ id, title, subtitle, list }) {
     <section id={id} className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6">
       <SurfacePanel className="overflow-hidden p-5 sm:p-6">
         <SectionHeading title={title} subtitle={subtitle} />
-        <div className="relative mt-6">
+        <div className="relative mt-5 sm:mt-6">
           <button
             aria-label={`Scroll ${title} left`}
             onClick={() => scrollRail(-1)}
@@ -582,9 +573,9 @@ function Shelf({ id, title, subtitle, list }) {
           >
             <RiArrowRightSLine size={18} />
           </button>
-          <div ref={railRef} className="hide-scrollbar flex gap-4 overflow-x-auto pb-1">
+          <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
             {list.map((anime) => (
-              <div key={`${anime.id || `mal-${anime.idMal}`}-${title}`} className="w-[16.5rem] shrink-0">
+              <div key={`${anime.id || `mal-${anime.idMal}`}-${title}`} className="rail-card">
                 <MediaCard anime={anime} href={mediaHref(anime)} compact />
               </div>
             ))}
@@ -617,9 +608,35 @@ const FILTER_CHIPS = [
   { key: 'upcoming', label: 'Upcoming' },
 ];
 
+const CRITICAL_SECTION_KEYS = new Set(['airing', 'trending']);
+const SECONDARY_SECTION_KEYS = new Set(SECTION_META.map((section) => section.key).filter((key) => !CRITICAL_SECTION_KEYS.has(key)));
+
+function LazyShelfSection({ section, list, ready, loading, hasLoaded, onVisible }) {
+  const { ref, isVisible } = useLazyMount();
+
+  useEffect(() => {
+    if (isVisible) onVisible();
+  }, [isVisible, onVisible]);
+
+  if (hasLoaded && !ready && !loading && list.length === 0) {
+    return <div ref={ref} />;
+  }
+
+  return (
+    <div ref={ref}>
+      {ready ? (
+        <Shelf id={section.id} title={section.title} subtitle={section.subtitle} list={list} />
+      ) : (
+        <ShelfSkeleton title={section.title} subtitle={section.subtitle} cardCount={loading ? 5 : 4} />
+      )}
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [data, setData] = useState(null);
   const [secondary, setSecondary] = useState(null);
+  const [secondaryLoading, setSecondaryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [provider, setProvider] = useState('AniList');
@@ -640,52 +657,81 @@ export default function HomePage() {
 
   const clearTopics = useCallback(() => setActiveTopics([]), []);
 
-  useEffect(() => {
-    const cachedCritical = getCache(CRITICAL_CACHE_KEY);
-    const cachedSecondary = getCache(SECONDARY_CACHE_KEY);
+  const loadSecondary = useCallback(async () => {
+    if (secondary || secondaryLoading) return;
 
-    if (cachedCritical) {
-      setData({ ...cachedCritical, provider: cachedCritical.provider || 'anilist' });
-      setProvider(cachedCritical.provider === 'jikan' ? 'Jikan Fallback' : 'AniList');
-      setLoading(false);
+    setSecondaryLoading(true);
+    try {
+      const payload = await anilistRequest(SECONDARY_QUERY, {}, {
+        cacheTtlMs: HOME_CACHE_TTL_MS,
+        key: 'home:secondary',
+      });
+      setSecondary(payload);
+      setCache(SECONDARY_CACHE_KEY, payload);
+    } catch (secondaryError) {
+      console.warn('[Home] Secondary fetch failed:', secondaryError.message);
+    } finally {
+      setSecondaryLoading(false);
     }
-    if (cachedSecondary) setSecondary(cachedSecondary);
-    if (cachedCritical && cachedSecondary) return;
+  }, [secondary, secondaryLoading]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const startedAt = Date.now();
 
     (async () => {
+      const cachedCritical = getCache(CRITICAL_CACHE_KEY);
+      const cachedSecondary = getCache(SECONDARY_CACHE_KEY);
+
+      if (cachedCritical && !cancelled) {
+        setData({ ...cachedCritical, provider: cachedCritical.provider || 'anilist' });
+        setProvider(cachedCritical.provider === 'jikan' ? 'Jikan Fallback' : 'AniList');
+      }
+
+      if (cachedSecondary && !cancelled) {
+        setSecondary(cachedSecondary);
+      }
+
       if (!cachedCritical) {
         try {
-          const primary = await anilist(CRITICAL_QUERY);
+          const primary = await anilistRequest(CRITICAL_QUERY, {}, {
+            cacheTtlMs: HOME_CACHE_TTL_MS,
+            key: 'home:critical',
+          });
           const payload = { ...primary, provider: 'anilist' };
-          setData(payload);
-          setProvider('AniList');
+          if (!cancelled) {
+            setData(payload);
+            setProvider('AniList');
+          }
           setCache(CRITICAL_CACHE_KEY, payload);
         } catch (criticalError) {
           console.warn('[Home] AniList critical failed, trying Jikan:', criticalError.message);
           try {
             const fallback = await fetchJikanFallbackHome();
-            setData(fallback);
-            setProvider('Jikan Fallback');
+            if (!cancelled) {
+              setData(fallback);
+              setProvider('Jikan Fallback');
+            }
             setCache(CRITICAL_CACHE_KEY, fallback);
           } catch (fallbackError) {
-            setError(fallbackError.message || 'Failed to load homepage');
+            if (!cancelled) setError(fallbackError.message || 'Failed to load homepage');
           }
-        } finally {
-          setLoading(false);
         }
       }
 
-      if (!cachedSecondary) {
-        try {
-          const payload = await anilist(SECONDARY_QUERY);
-          setSecondary(payload);
-          setCache(SECONDARY_CACHE_KEY, payload);
-        } catch (secondaryError) {
-          console.warn('[Home] Secondary fetch failed:', secondaryError.message);
-        }
-      }
+      await ensureMinimumDelay(startedAt);
+      if (!cancelled) setLoading(false);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!activeTopics.some((key) => SECONDARY_SECTION_KEYS.has(key))) return;
+    loadSecondary();
+  }, [activeTopics, loadSecondary]);
 
   const featuredList = useMemo(() => {
     const rankWeights = { airing: 28, trending: 22, topRated: 18, popular: 10 };
@@ -727,6 +773,14 @@ export default function HomePage() {
     const selected = new Set(activeTopics);
     return SECTION_META.filter((section) => selected.has(section.key));
   }, [activeTopics]);
+  const criticalSections = useMemo(
+    () => visibleSections.filter((section) => CRITICAL_SECTION_KEYS.has(section.key)),
+    [visibleSections]
+  );
+  const deferredSections = useMemo(
+    () => visibleSections.filter((section) => SECONDARY_SECTION_KEYS.has(section.key)),
+    [visibleSections]
+  );
   const isFiltering = activeTopics.length > 0;
 
   return (
@@ -741,9 +795,9 @@ export default function HomePage() {
         <HomePageSkeleton />
       ) : error ? (
         <section className="mx-auto max-w-screen-xl px-4 py-10 sm:px-6">
-          <SurfacePanel className="p-8">
+          <SurfacePanel className="p-6 sm:p-8">
             <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">Homepage Error</p>
-            <h1 className="mt-3 font-[family:var(--font-display)] text-4xl text-[var(--color-ivory)]">We couldn’t load the homepage.</h1>
+            <h1 className="mt-3 font-[family:var(--font-display)] text-3xl text-[var(--color-ivory)] sm:text-4xl">We couldn’t load the homepage.</h1>
             <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">{error}</p>
           </SurfacePanel>
         </section>
@@ -759,14 +813,14 @@ export default function HomePage() {
                   title="A premium anime front page"
                   subtitle="A curated blend of trending, airing, high-score, and genre-led shelves backed by AniList and resilient fallback data."
                 />
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                   <MetaPill icon={RiSparkling2Fill} accent="var(--color-brass)">{totalCards} picks loaded</MetaPill>
                   <MetaPill icon={RiTrophyLine}>Source: {provider}</MetaPill>
                   <MetaPill icon={RiCalendarLine}>Refreshes every 15 min</MetaPill>
                 </div>
               </div>
 
-              <div className="hide-scrollbar mt-6 flex gap-2 overflow-x-auto pb-1">
+              <div className="hide-scrollbar mt-5 flex gap-2 overflow-x-auto pb-1 sm:mt-6">
                 <button
                   onClick={clearTopics}
                   className={cx('tag-chip whitespace-nowrap', !isFiltering ? '!border-[rgba(196,160,96,0.32)] !bg-[rgba(196,160,96,0.14)] !text-[var(--color-brass)]' : '')}
@@ -792,7 +846,7 @@ export default function HomePage() {
 
           <ContinueWatchingRow />
 
-          {visibleSections.map((section) => (
+          {criticalSections.map((section) => (
             <Shelf
               key={section.key}
               id={section.id}
@@ -802,7 +856,24 @@ export default function HomePage() {
             />
           ))}
 
-          {!isFiltering && popularGrid.length > 0 ? (
+          {deferredSections.map((section) => {
+            const list = getSectionMedia(mergedData, section.key);
+            const ready = Boolean(secondary) && list.length > 0;
+
+            return (
+              <LazyShelfSection
+                key={section.key}
+                section={section}
+                list={list}
+                ready={ready}
+                loading={secondaryLoading}
+                hasLoaded={Boolean(secondary)}
+                onVisible={loadSecondary}
+              />
+            );
+          })}
+
+          {!isFiltering && (secondaryLoading || popularGrid.length > 0 || !secondary) ? (
             <section className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6">
               <SurfacePanel className="overflow-hidden p-5 sm:p-6">
                 <SectionHeading
@@ -810,11 +881,17 @@ export default function HomePage() {
                   title="Popular right now"
                   subtitle="A broader grid for quick browsing once the curated rails have set the tone."
                 />
-                <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {popularGrid.map((anime) => (
-                    <MediaCard key={`${anime.id || `mal-${anime.idMal}`}-grid`} anime={anime} href={mediaHref(anime)} />
-                  ))}
-                </div>
+                {secondary ? (
+                  <div className="mt-6 grid grid-cols-1 gap-4 min-[430px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {popularGrid.map((anime) => (
+                      <MediaCard key={`${anime.id || `mal-${anime.idMal}`}-grid`} anime={anime} href={mediaHref(anime)} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-6" onMouseEnter={loadSecondary}>
+                    <MediaGridSkeleton count={4} className="min-[430px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" />
+                  </div>
+                )}
               </SurfacePanel>
             </section>
           ) : null}

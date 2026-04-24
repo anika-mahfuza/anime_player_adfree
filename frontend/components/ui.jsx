@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import {
   RiArrowLeftSLine,
@@ -25,16 +26,16 @@ export function cx(...values) {
 
 export function BrandMark({ compact = false }) {
   return (
-    <Link href="/" className="group inline-flex items-center gap-3">
-      <span className="flex h-11 w-11 items-center justify-center rounded-[1.35rem] border border-[rgba(244,231,210,0.12)] bg-[linear-gradient(145deg,rgba(139,40,61,0.95),rgba(84,24,37,0.95))] shadow-[0_16px_40px_rgba(48,13,21,0.55)] transition-transform duration-300 group-hover:scale-[1.03]">
-        <RiPlayMiniFill size={compact ? 18 : 20} className="translate-x-[1px] text-[var(--color-ivory)]" />
-      </span>
-      <span className="flex flex-col leading-none">
-        <span className="font-[family:var(--font-display)] text-[1.15rem] tracking-[0.2em] text-[var(--color-mist)] uppercase">
+    <Link href="/" className="inline-flex max-w-full items-center gap-2.5 sm:gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[1.15rem] bg-[linear-gradient(145deg,rgba(139,40,61,0.95),rgba(84,24,37,0.95))] shadow-[0_16px_40px_rgba(48,13,21,0.55)] sm:h-11 sm:w-11 sm:rounded-[1.35rem]">
+        <Image src="/logo.png" alt="AniStream" width={88} height={88} className="h-full w-full object-contain" />
+      </div>
+      <span className="min-w-0 flex flex-col leading-none">
+        <span className="truncate font-[family:var(--font-display)] text-[1rem] tracking-[0.18em] text-[var(--color-mist)] uppercase sm:text-[1.15rem] sm:tracking-[0.2em]">
           AniStream
         </span>
         {!compact && (
-          <span className="mt-1 text-[0.7rem] uppercase tracking-[0.26em] text-[var(--color-muted)]">
+          <span className="mt-1 hidden text-[0.7rem] uppercase tracking-[0.26em] text-[var(--color-muted)] sm:block">
             Curated Anime Cinema
           </span>
         )}
@@ -46,17 +47,17 @@ export function BrandMark({ compact = false }) {
 export function TopNav({ children, rightSlot, backHref, backLabel = 'Back' }) {
   return (
     <header className="sticky top-0 z-50 border-b border-white/6 bg-[rgba(8,10,14,0.78)] backdrop-blur-2xl">
-      <div className="mx-auto flex max-w-screen-xl items-center gap-4 px-4 py-4 sm:px-6">
+      <div className="mx-auto flex max-w-screen-xl flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap sm:gap-4 sm:px-6 sm:py-4">
         {backHref ? (
-          <Link href={backHref} className="button-ghost hidden sm:inline-flex">
+          <Link href={backHref} className="button-ghost shrink-0 px-2.5 py-2 sm:px-4">
             <RiArrowLeftSLine size={18} />
-            {backLabel}
+            <span className="hidden sm:inline">{backLabel}</span>
           </Link>
         ) : (
           <BrandMark compact />
         )}
-        <div className="min-w-0 flex-1">{children}</div>
-        {rightSlot ? <div className="hidden items-center gap-3 md:flex">{rightSlot}</div> : null}
+        <div className="min-w-0 basis-full flex-1 sm:basis-auto">{children}</div>
+        {rightSlot ? <div className="hidden shrink-0 items-center gap-3 lg:flex">{rightSlot}</div> : null}
       </div>
     </header>
   );
@@ -75,7 +76,7 @@ export function SearchField({
   return (
     <form onSubmit={onSubmit} className={cx('relative', className)}>
       <div className="relative">
-        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-muted)]">
+        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] sm:left-4">
           <RiSearchLine size={18} className={loading ? 'animate-pulse' : ''} />
         </span>
         <input
@@ -83,7 +84,7 @@ export function SearchField({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className="lux-input w-full pl-11 pr-11"
+          className="lux-input w-full pl-10 pr-10 sm:pl-11 sm:pr-11"
         />
         {value ? (
           <button type="button" onClick={onClear} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--color-muted)] transition hover:bg-white/6 hover:text-[var(--color-mist)]">
@@ -101,7 +102,7 @@ export function SurfacePanel({ className = '', children }) {
 
 export function SectionHeading({ eyebrow, title, subtitle, action }) {
   return (
-    <div className="flex items-end justify-between gap-4">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow ? (
           <div className="mb-2 inline-flex items-center gap-2 text-[0.7rem] uppercase tracking-[0.24em] text-[var(--color-brass)]">
@@ -109,12 +110,12 @@ export function SectionHeading({ eyebrow, title, subtitle, action }) {
             {eyebrow}
           </div>
         ) : null}
-        <h2 className="font-[family:var(--font-display)] text-2xl text-[var(--color-ivory)] sm:text-[2rem]">
+        <h2 className="font-[family:var(--font-display)] text-[1.7rem] leading-tight text-[var(--color-ivory)] sm:text-[2rem]">
           {title}
         </h2>
         {subtitle ? <p className="mt-2 max-w-2xl text-sm text-[var(--color-muted)]">{subtitle}</p> : null}
       </div>
-      {action}
+      {action ? <div className="flex shrink-0 flex-wrap gap-2 self-start sm:self-auto">{action}</div> : null}
     </div>
   );
 }
@@ -152,7 +153,7 @@ export function EmptyState({ icon: Icon = RiCompass3Line, title, description, ac
       <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--color-brass)]">
         <Icon size={24} />
       </span>
-      <h2 className="font-[family:var(--font-display)] text-3xl text-[var(--color-ivory)]">{title}</h2>
+      <h2 className="font-[family:var(--font-display)] text-[2rem] text-[var(--color-ivory)] sm:text-3xl">{title}</h2>
       {description ? <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--color-muted)]">{description}</p> : null}
       {action ? <div className="mt-7">{action}</div> : null}
     </SurfacePanel>
@@ -172,7 +173,7 @@ export function MediaCard({ anime, href, compact = false, priority = false, clas
   const destination = href || animeHref(anime?.id);
 
   return (
-    <Link href={destination} className={cx('media-card group', compact ? 'media-card-compact' : '', className)}>
+    <Link href={destination} className={cx('media-card group max-w-full', compact ? 'media-card-compact' : '', className)}>
       <div className="media-card-art">
         {image ? (
           <img
@@ -187,7 +188,7 @@ export function MediaCard({ anime, href, compact = false, priority = false, clas
           </div>
         )}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.04),rgba(8,10,14,0.9))]" />
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 p-3">
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 p-2.5 sm:p-3">
           {score ? (
             <MetaPill icon={RiStarFill} accent="var(--color-brass)" className="bg-[rgba(8,10,14,0.6)]">
               {score}
@@ -195,19 +196,19 @@ export function MediaCard({ anime, href, compact = false, priority = false, clas
           ) : <span />}
           {episodes ? <MetaPill icon={RiTimeLine}>{episodes}</MetaPill> : null}
         </div>
-        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-3">
+        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-2.5 sm:p-3">
           <div className="flex gap-2">
             {format ? <TagChip>{format}</TagChip> : null}
             {anime?.status === 'RELEASING' ? <StatusBadge status={anime.status} /> : null}
           </div>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-[rgba(8,10,14,0.56)] text-[var(--color-ivory)] transition duration-300 group-hover:bg-[rgba(139,40,61,0.92)]">
-            <RiPlayMiniFill size={20} className="translate-x-[1px]" />
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/12 bg-[rgba(8,10,14,0.56)] text-[var(--color-ivory)] transition duration-300 group-hover:bg-[rgba(139,40,61,0.92)] sm:h-11 sm:w-11">
+            <RiPlayMiniFill size={18} className="translate-x-[1px] sm:text-[20px]" />
           </span>
         </div>
       </div>
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex flex-1 flex-col gap-2.5 p-3.5 sm:gap-3 sm:p-4">
         <div className="space-y-2">
-          <h3 className="line-clamp-2 text-base font-medium leading-6 text-[var(--color-ivory)] transition group-hover:text-white">
+          <h3 className="line-clamp-2 text-[0.95rem] font-medium leading-6 text-[var(--color-ivory)] transition group-hover:text-white sm:text-base">
             {title}
           </h3>
           <div className="flex flex-wrap gap-2">
@@ -240,7 +241,7 @@ export function HeroMetaRow({ anime }) {
 
 export function QuickActionLink({ href, primary = false, icon: Icon = RiArrowRightSLine, children }) {
   return (
-    <Link href={href} className={primary ? 'button-primary' : 'button-secondary'}>
+    <Link href={href} className={primary ? 'button-primary w-full sm:w-auto' : 'button-secondary w-full sm:w-auto'}>
       {Icon ? <Icon size={18} /> : null}
       {children}
     </Link>

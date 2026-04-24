@@ -17,29 +17,9 @@ import {
 import { MediaCard, MetaPill, QuickActionLink, SectionHeading, StatusBadge, SurfacePanel, TagChip } from '@/components/ui';
 import { AnimeDetailsSkeleton } from '@/components/skeletons';
 import { getWatchSequence, useWatchProgress } from '@/hooks/useWatchProgress';
-import { apiUrl } from '@/lib/apiBase';
+import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
 import { formatRelationType, formatSeason, mediaTitle, stripHtml } from '@/lib/media';
 import { animeHref, watchHref } from '@/lib/routes';
-
-async function anilist(query, variables = {}) {
-  try {
-    const response = await fetch(apiUrl('/api/anilist'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!response.ok) {
-      if (response.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    if (payload.errors) throw new Error(payload.errors[0].message);
-    return payload.data;
-  } catch (error) {
-    console.error('AniList fetch error:', error.message);
-    throw new Error('Failed to fetch anime details. Please try again.');
-  }
-}
 
 const ANIME_DETAILS_QUERY = `
   query ($id: Int) {
@@ -144,11 +124,15 @@ function AnimeDetailsInner() {
     if (!id) return;
 
     let cancelled = false;
+    const startedAt = Date.now();
     setLoading(true);
     setError('');
     setAnime(null);
 
-    anilist(ANIME_DETAILS_QUERY, { id: Number.parseInt(id, 10) })
+    anilistRequest(ANIME_DETAILS_QUERY, { id: Number.parseInt(id, 10) }, {
+      cacheTtlMs: 5 * 60 * 1000,
+      key: `anime-details:${id}`,
+    })
       .then((data) => {
         if (cancelled) return;
         if (!data?.Media) throw new Error('Anime not found');
@@ -158,7 +142,8 @@ function AnimeDetailsInner() {
         if (cancelled) return;
         setError(nextError.message || 'Failed to load anime details');
       })
-      .finally(() => {
+      .finally(async () => {
+        await ensureMinimumDelay(startedAt);
         if (!cancelled) setLoading(false);
       });
 
@@ -193,7 +178,7 @@ function AnimeDetailsInner() {
       <main className="site-shell flex min-h-screen items-center justify-center px-4 py-10">
         <SurfacePanel className="w-full max-w-2xl p-6 sm:p-8">
           <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">Detail Page</p>
-          <h1 className="mt-3 font-[family:var(--font-display)] text-4xl text-[var(--color-ivory)]">Could not load this anime</h1>
+          <h1 className="mt-3 font-[family:var(--font-display)] text-3xl text-[var(--color-ivory)] sm:text-4xl">Could not load this anime</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">{error || 'Unknown error'}</p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link href="/" className="button-primary">Go Home</Link>
@@ -237,25 +222,25 @@ function AnimeDetailsInner() {
             </Link>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-end">
-            <div className="max-w-[19rem]">
+          <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-end lg:gap-8">
+            <div className="mx-auto w-full max-w-[15rem] sm:max-w-[19rem] lg:mx-0">
               {anime.coverImage?.extraLarge ? (
                 <img
                   src={anime.coverImage.extraLarge}
                   alt={title}
-                  className="aspect-[2/3] w-full rounded-[2rem] border border-white/10 object-cover shadow-[0_30px_90px_rgba(0,0,0,0.45)]"
+                  className="aspect-[2/3] w-full rounded-[1.5rem] border border-white/10 object-cover shadow-[0_30px_90px_rgba(0,0,0,0.45)] sm:rounded-[2rem]"
                 />
               ) : null}
             </div>
 
-            <div className="max-w-4xl">
+            <div className="max-w-4xl text-center lg:text-left">
               <p className="text-[0.72rem] uppercase tracking-[0.24em] text-[var(--color-brass)]">Anime Detail</p>
-              <h1 className="mt-3 font-[family:var(--font-display)] text-4xl leading-tight text-[var(--color-ivory)] sm:text-6xl">
+              <h1 className="mt-3 font-[family:var(--font-display)] text-3xl leading-tight text-[var(--color-ivory)] sm:text-5xl lg:text-6xl">
                 {title}
               </h1>
               {anime.title?.native ? <p className="mt-3 text-sm text-[var(--color-muted)]">{anime.title.native}</p> : null}
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-5 flex flex-wrap justify-center gap-2 lg:justify-start">
                 {score ? <MetaPill icon={RiStarFill} accent="var(--color-brass)">{score}</MetaPill> : null}
                 {anime.format ? <MetaPill icon={RiClapperboardLine}>{anime.format.replace(/_/g, ' ')}</MetaPill> : null}
                 {anime.episodes ? <MetaPill icon={RiTv2Line}>{anime.episodes} eps</MetaPill> : null}
@@ -272,14 +257,14 @@ function AnimeDetailsInner() {
               ) : null}
 
               {anime.genres?.length ? (
-                <div className="mt-6 flex flex-wrap gap-2">
+                <div className="mt-6 flex flex-wrap justify-center gap-2 lg:justify-start">
                   {anime.genres.map((genre) => (
                     <TagChip key={genre}>{genre}</TagChip>
                   ))}
                 </div>
               ) : null}
 
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-8 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:gap-3 lg:justify-start">
                 <QuickActionLink href={watchHref(anime.id)} primary icon={RiPlayMiniFill}>
                   {watchLabel}
                 </QuickActionLink>

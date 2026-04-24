@@ -19,6 +19,7 @@ const openingTypes = new Set(['op', 'mixed-op']);
 const endingTypes = new Set(['ed', 'mixed-ed']);
 const animeSkipIntroTypes = ['Intro', 'Mixed Intro', 'New Intro'];
 const animeSkipOutroTypes = ['Credits', 'Mixed Credits', 'New Credits'];
+const animeSkipTimeoutMs = 30000;
 
 function normalizeResult(result) {
   const start = Number(result?.interval?.startTime ?? result?.interval?.start_time);
@@ -161,19 +162,25 @@ async function fetchAnimeSkipShows(anilistId) {
     }
   `;
 
-  const response = await fetchWithTimeout(
-    'https://api.anime-skip.com/graphql',
-    {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'X-Client-ID': 'ZGfO0sMF3eCwLYf8yMSCJjlynwNGRXWE',
+  let response;
+  try {
+    response = await fetchWithTimeout(
+      'https://api.anime-skip.com/graphql',
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Client-ID': 'ZGfO0sMF3eCwLYf8yMSCJjlynwNGRXWE',
+        },
+        body: JSON.stringify({ query, variables: { serviceId: String(anilistId) } }),
       },
-      body: JSON.stringify({ query, variables: { serviceId: String(anilistId) } }),
-    },
-    15000,
-  );
+      animeSkipTimeoutMs,
+    );
+  } catch (error) {
+    console.warn(`[skip-times] Anime-Skip lookup failed for AniList ${anilistId}: ${error.message}`);
+    return [];
+  }
 
   if (!response.ok) {
     return [];
@@ -185,20 +192,26 @@ async function fetchAnimeSkipShows(anilistId) {
     : [];
 }
 
-function collectAnimeSkipSegments(timestamps, allowedNames) {
-  const relevant = timestamps
-    .filter((timestamp) => allowedNames.includes(String(timestamp?.type?.name || '')))
-    .map((timestamp) => Number(timestamp?.at))
-    .filter((value) => Number.isFinite(value))
-    .sort((a, b) => a - b);
+function collectAnimeSkipSegments(timestamps, allowedNames, episodeLength) {
+  const ordered = timestamps
+    .map((timestamp) => ({
+      at: Number(timestamp?.at),
+      typeName: String(timestamp?.type?.name || ''),
+    }))
+    .filter((timestamp) => Number.isFinite(timestamp.at))
+    .sort((a, b) => a.at - b.at);
 
   const segments = [];
-  for (let i = 0; i + 1 < relevant.length; i += 2) {
-    const start = relevant[i];
-    const end = relevant[i + 1];
-    if (end > start) {
-      segments.push({ startTime: start, endTime: end });
-    }
+  for (let index = 0; index < ordered.length; index += 1) {
+    const current = ordered[index];
+    if (!allowedNames.includes(current.typeName)) continue;
+
+    const next = ordered[index + 1];
+    const start = current.at;
+    const end = next?.at ?? episodeLength;
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    segments.push({ startTime: start, endTime: end });
   }
 
   return segments;
@@ -220,6 +233,33 @@ function scoreAnimeSkipShow(show, episodeNumber) {
   if (show?.episodeCount) score += Math.min(show.episodeCount, 20);
   if (show?.name) score += 5;
   return score;
+}
+
+function countResolvedSegments(skipTimes) {
+  let count = 0;
+  if (skipTimes?.intro) count += 1;
+  if (skipTimes?.outro) count += 1;
+  if (skipTimes?.recap) count += 1;
+  return count;
+}
+
+function compareResolvedCandidates(next, current) {
+  if (!next) return current;
+  if (!current) return next;
+
+  const nextSegments = countResolvedSegments(next.skipTimes);
+  const currentSegments = countResolvedSegments(current.skipTimes);
+  if (nextSegments !== currentSegments) {
+    return nextSegments > currentSegments ? next : current;
+  }
+
+  const nextPriority = next.source === 'anime-skip' ? 2 : 1;
+  const currentPriority = current.source === 'anime-skip' ? 2 : 1;
+  if (nextPriority !== currentPriority) {
+    return nextPriority > currentPriority ? next : current;
+  }
+
+  return next.score > current.score ? next : current;
 }
 
 function buildSkipTimes(results, requestedLengthSec) {
@@ -288,6 +328,7 @@ async function resolveSkipTimesForId(malId, episodeNumber, episodeLength) {
   return {
     id: malId,
     skipTimes,
+    source: 'aniskip',
     score: scoreSkipTimes(skipTimes, episodeLength, result.results),
   };
 }
@@ -311,8 +352,8 @@ async function resolveAnimeSkipForId(anilistId, episodeNumber, episodeLength) {
     .filter((value) => Number.isFinite(value))
     .reduce((max, value) => Math.max(max, value), 0);
 
-  const introSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipIntroTypes));
-  const outroSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipOutroTypes));
+  const introSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipIntroTypes, referenceLength));
+  const outroSegment = pickLongestSegment(collectAnimeSkipSegments(episode.timestamps, animeSkipOutroTypes, referenceLength));
 
   const skipTimes = Object.fromEntries(
     Object.entries({
@@ -330,7 +371,12 @@ async function resolveAnimeSkipForId(anilistId, episodeNumber, episodeLength) {
   return {
     id: anilistId,
     skipTimes,
-    score: (skipTimes.intro ? 25 : 0) + (skipTimes.outro ? 25 : 0) + (bestShow?.episodeCount || 0),
+    source: 'anime-skip',
+    score:
+      (skipTimes.intro ? 30 : 0) +
+      (skipTimes.outro ? 30 : 0) +
+      (skipTimes.recap ? 10 : 0) +
+      Math.min(bestShow?.episodeCount || 0, 20),
   };
 }
 
@@ -375,46 +421,33 @@ export async function handleSkipTimes({ req, res, url }) {
       }
     }
 
-    const primary = await resolveSkipTimesForId(primaryMalId, episodeNumber, episodeLength);
-    if (primary) {
-      return sendJson(res, 200, {
-        skipTimes: primary.skipTimes,
-        source: 'aniskip',
-        resolvedMalId: primary.id,
-      });
-    }
-
     let best = null;
+
+    const primary = await resolveSkipTimesForId(primaryMalId, episodeNumber, episodeLength);
+    best = compareResolvedCandidates(primary, best);
 
     for (const id of candidateIds) {
       if (id === primaryMalId) continue;
       const resolved = await resolveSkipTimesForId(id, episodeNumber, episodeLength);
+      best = compareResolvedCandidates(resolved, best);
+    }
+
+    let bestAnimeSkip = null;
+
+    for (const id of candidateAnilistIds) {
+      const resolved = await resolveAnimeSkipForId(id, episodeNumber, episodeLength);
       if (!resolved) continue;
-      if (!best || resolved.score > best.score) {
-        best = resolved;
+      if (!bestAnimeSkip || resolved.score > bestAnimeSkip.score) {
+        bestAnimeSkip = resolved;
+      }
+      if (id === primaryAnilistId && countResolvedSegments(resolved.skipTimes) >= 2) {
+        break;
       }
     }
 
+    best = compareResolvedCandidates(bestAnimeSkip, best);
+
     if (!best) {
-      let bestAnimeSkip = null;
-
-      for (const id of candidateAnilistIds) {
-        const resolved = await resolveAnimeSkipForId(id, episodeNumber, episodeLength);
-        if (!resolved) continue;
-        if (!bestAnimeSkip || resolved.score > bestAnimeSkip.score) {
-          bestAnimeSkip = resolved;
-        }
-      }
-
-      if (bestAnimeSkip) {
-        return sendJson(res, 200, {
-          skipTimes: bestAnimeSkip.skipTimes,
-          source: 'anime-skip',
-          resolvedMalId: primaryMalId,
-          resolvedAnilistId: bestAnimeSkip.id,
-        });
-      }
-
       return sendJson(res, 200, {
         skipTimes: null,
         source: 'none',
@@ -424,8 +457,9 @@ export async function handleSkipTimes({ req, res, url }) {
 
     return sendJson(res, 200, {
       skipTimes: best.skipTimes,
-      source: 'aniskip',
-      resolvedMalId: best.id,
+      source: best.source,
+      resolvedMalId: best.source === 'aniskip' ? best.id : primaryMalId,
+      resolvedAnilistId: best.source === 'anime-skip' ? best.id : undefined,
     });
   } catch (error) {
     console.error('[skip-times] Error:', error);

@@ -22,29 +22,11 @@ import AnimePlayer from '@/components/AnimePlayer';
 import { WatchPageSkeleton } from '@/components/skeletons';
 import { MetaPill, SectionHeading, StatusBadge, SurfacePanel, TagChip, TopNav } from '@/components/ui';
 import { getWatchSequence, useWatchProgress } from '@/hooks/useWatchProgress';
+import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
 import { apiUrl } from '@/lib/apiBase';
 import { formatRelationType, formatSeason, mediaTitle, stripHtml } from '@/lib/media';
+import { pacedJsonFetch } from '@/lib/requestScheduler';
 import { animeHref } from '@/lib/routes';
-
-async function anilist(query, variables = {}) {
-  try {
-    const response = await fetch(apiUrl('/api/anilist'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!response.ok) {
-      if (response.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    if (payload.errors) throw new Error(payload.errors[0].message);
-    return payload.data;
-  } catch (error) {
-    console.error('AniList fetch error:', error.message);
-    throw new Error('Failed to fetch anime data. Please try again.');
-  }
-}
 
 const ANIME_QUERY = `
   query ($id: Int) {
@@ -93,9 +75,10 @@ async function fetchSkipTimes({
     const useMock = new URLSearchParams(window.location.search).get('mock') === 'true';
     if (useMock) params.set('mock', 'true');
 
-    const response = await fetch(apiUrl(`/api/skip-times?${params.toString()}`));
-    if (!response.ok) return null;
-    return response.json();
+    return await pacedJsonFetch(apiUrl(`/api/skip-times?${params.toString()}`), undefined, {
+      key: `skip-times:v2:${params.toString()}`,
+      cacheTtlMs: 5 * 60 * 1000,
+    });
   } catch (error) {
     console.log('Skip times not available for this anime:', error.message);
     return null;
@@ -103,18 +86,27 @@ async function fetchSkipTimes({
 }
 
 async function fetchEpisodes(malId) {
-  const first = await fetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=1`).then((response) => response.json());
+  const baseKey = `episodes:${malId}`;
+  const first = await pacedJsonFetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=1`, undefined, {
+    key: `${baseKey}:1`,
+    cacheTtlMs: 10 * 60 * 1000,
+  });
+
   if (!first.data) return [];
+
   const last = first.pagination?.last_visible_page ?? 1;
   if (last === 1) return first.data;
-  const rest = await Promise.all(
-    Array.from({ length: last - 1 }, (_, index) =>
-      fetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=${index + 2}`)
-        .then((response) => response.json())
-        .then((payload) => payload.data ?? [])
-    )
-  );
-  return [...first.data, ...rest.flat()];
+
+  const pages = [first.data];
+  for (let page = 2; page <= last; page += 1) {
+    const payload = await pacedJsonFetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=${page}`, undefined, {
+      key: `${baseKey}:${page}`,
+      cacheTtlMs: 10 * 60 * 1000,
+    });
+    pages.push(payload.data ?? []);
+  }
+
+  return pages.flat();
 }
 
 async function fetchStreamUrl({
@@ -137,9 +129,11 @@ async function fetchStreamUrl({
   if (totalEpisodes) query.set('totalEpisodes', String(totalEpisodes));
   if (duration) query.set('duration', String(duration));
 
-  const response = await fetch(apiUrl(`/api/stream?${query.toString()}`));
-  const payload = await response.json();
-  if (!response.ok || payload.error) throw new Error(payload.error ?? 'Stream fetch failed');
+  const payload = await pacedJsonFetch(apiUrl(`/api/stream?${query.toString()}`), undefined, {
+    key: `stream:${query.toString()}`,
+    cacheTtlMs: 20 * 1000,
+  });
+  if (payload.error) throw new Error(payload.error ?? 'Stream fetch failed');
   return payload.streamUrl;
 }
 
@@ -246,6 +240,7 @@ function WatchPageContent() {
 
   useEffect(() => {
     if (!id) return;
+    const startedAt = Date.now();
     setMetaLoading(true);
     setAnime(null);
     setEpisodes([]);
@@ -254,7 +249,10 @@ function WatchPageContent() {
 
     const anilistId = Number.parseInt(id, 10);
 
-    anilist(ANIME_QUERY, { id: anilistId })
+    anilistRequest(ANIME_QUERY, { id: anilistId }, {
+      cacheTtlMs: 5 * 60 * 1000,
+      key: `watch-meta:${id}`,
+    })
       .then((data) => {
         if (!isMounted.current) return;
         const media = data?.Media;
@@ -266,14 +264,20 @@ function WatchPageContent() {
 
         const malId = media.idMal;
         if (malId) {
-          fetchEpisodes(malId).then((episodeData) => {
-            if (!isMounted.current) return;
-            if (episodeData.length) {
-              setEpisodes(episodeData);
-            } else if (media.episodes) {
+          fetchEpisodes(malId)
+            .then((episodeData) => {
+              if (!isMounted.current) return;
+              if (episodeData.length) {
+                setEpisodes(episodeData);
+              } else if (media.episodes) {
+                setEpisodes(Array.from({ length: media.episodes }, (_, index) => ({ mal_id: index + 1, title: null })));
+              }
+            })
+            .catch((episodeError) => {
+              console.warn('[Watch] Episode fetch failed, using fallback episode list:', episodeError.message);
+              if (!isMounted.current || !media.episodes) return;
               setEpisodes(Array.from({ length: media.episodes }, (_, index) => ({ mal_id: index + 1, title: null })));
-            }
-          });
+            });
         } else if (media.episodes) {
           setEpisodes(Array.from({ length: media.episodes }, (_, index) => ({ mal_id: index + 1, title: null })));
         }
@@ -281,7 +285,10 @@ function WatchPageContent() {
       .catch((error) => {
         console.error(error);
       })
-      .finally(() => setMetaLoading(false));
+      .finally(async () => {
+        await ensureMinimumDelay(startedAt);
+        if (isMounted.current) setMetaLoading(false);
+      });
   }, [id, getProgress]);
 
   const loadStream = useCallback(async (episodeNumber) => {
@@ -320,9 +327,7 @@ function WatchPageContent() {
   const handleStartWatching = useCallback(() => {
     setHasStarted(true);
     setStreamUrl('');
-    setStreamLoading(true);
-    loadStream(activeEpisode);
-  }, [activeEpisode, loadStream]);
+  }, []);
 
   useEffect(() => {
     if (!anime || !hasStarted) return;
@@ -491,13 +496,13 @@ function WatchPageContent() {
       >
         <div>
           <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">Now Watching</p>
-          <h1 className="truncate font-[family:var(--font-display)] text-2xl text-[var(--color-ivory)]">{title}</h1>
+          <h1 className="truncate font-[family:var(--font-display)] text-xl text-[var(--color-ivory)] sm:text-2xl">{title}</h1>
         </div>
       </TopNav>
 
       {savedProgress?.episode > 1 ? (
         <section className="mx-auto max-w-screen-xl px-4 pt-5 sm:px-6">
-          <SurfacePanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <SurfacePanel className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
             <div className="flex items-center gap-2 text-sm text-[var(--color-mist)]">
               <RiHistoryLine size={16} className="text-[var(--color-brass)]" />
               Continue from episode {savedProgress.episode}
@@ -510,16 +515,16 @@ function WatchPageContent() {
       ) : null}
 
       <section className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 sm:py-8">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_24rem]">
+        <div className="grid gap-5 lg:gap-6 xl:grid-cols-[minmax(0,1.45fr)_24rem]">
           <div className="space-y-6">
-            <SurfacePanel className="overflow-hidden p-4 sm:p-5">
+            <SurfacePanel className="overflow-hidden p-3 sm:p-5">
               {anime.bannerImage ? (
-                <div className="mb-4 h-28 overflow-hidden rounded-[1.35rem] border border-white/8 sm:h-36">
+                <div className="mb-4 h-24 overflow-hidden rounded-[1.1rem] border border-white/8 sm:h-36 sm:rounded-[1.35rem]">
                   <img src={anime.bannerImage} alt="" className="h-full w-full object-cover" />
                 </div>
               ) : null}
 
-              <div className="relative overflow-hidden rounded-[1.5rem] bg-black">
+              <div className="relative overflow-hidden rounded-[1.1rem] bg-black sm:rounded-[1.5rem]">
                 {streamError ? (
                   <div className="flex aspect-video flex-col items-center justify-center gap-3 bg-[var(--color-ink)] px-4 text-center text-[var(--color-muted)]">
                     <RiAlertLine size={28} className="text-[var(--color-brass)]" />
@@ -569,16 +574,17 @@ function WatchPageContent() {
               </div>
 
               {episodes.length > 1 ? (
-                <div className="mt-4 flex items-center justify-between gap-3">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                   <button
                     disabled={activeEpisode <= 1}
                     onClick={() => setActiveEpisode((previous) => Math.max(1, previous - 1))}
                     className="button-secondary disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     <RiArrowLeftSLine size={18} />
-                    Previous
+                    <span className="hidden sm:inline">Previous</span>
+                    <span className="sm:hidden">Prev</span>
                   </button>
-                  <p className="text-sm uppercase tracking-[0.16em] text-[var(--color-muted)]">
+                  <p className="order-first w-full text-center text-[0.72rem] uppercase tracking-[0.14em] text-[var(--color-muted)] sm:order-none sm:w-auto sm:text-sm sm:tracking-[0.16em]">
                     Episode {activeEpisode} / {episodes.length}
                   </p>
                   <button
@@ -594,21 +600,21 @@ function WatchPageContent() {
             </SurfacePanel>
 
             <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-              <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)]">
+              <div className="grid gap-5 sm:grid-cols-[8rem_minmax(0,1fr)]">
                 {anime.coverImage?.extraLarge ? (
                   <img
                     src={anime.coverImage.extraLarge}
                     alt={title}
-                    className="h-48 w-32 rounded-[1.4rem] border border-white/8 object-cover"
+                    className="mx-auto h-48 w-32 rounded-[1.25rem] border border-white/8 object-cover sm:mx-0 sm:rounded-[1.4rem]"
                   />
                 ) : null}
 
-                <div>
+                <div className="text-center sm:text-left">
                   <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">Episode Context</p>
-                  <h2 className="mt-2 font-[family:var(--font-display)] text-3xl text-[var(--color-ivory)]">{title}</h2>
+                  <h2 className="mt-2 font-[family:var(--font-display)] text-2xl text-[var(--color-ivory)] sm:text-3xl">{title}</h2>
                   {anime.title?.native ? <p className="mt-2 text-sm text-[var(--color-muted)]">{anime.title.native}</p> : null}
 
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
                     {score ? <MetaPill icon={RiStarFill} accent="var(--color-brass)">{score}</MetaPill> : null}
                     {anime.format ? <MetaPill icon={RiClapperboardLine}>{anime.format.replace(/_/g, ' ')}</MetaPill> : null}
                     {anime.episodes ? <MetaPill icon={RiTv2Line}>{anime.episodes} eps</MetaPill> : null}
@@ -625,7 +631,7 @@ function WatchPageContent() {
                   ) : null}
 
                   {anime.genres?.length ? (
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
                       {anime.genres.map((genre) => (
                         <TagChip key={genre}>{genre}</TagChip>
                       ))}
@@ -654,7 +660,7 @@ function WatchPageContent() {
               <SectionHeading
                 eyebrow="Episode Rail"
                 title="Episodes"
-                subtitle={`Episode ${activeEpisode} selected${episodes.length > 0 ? ` • ${episodes.length} total` : ''}`}
+                subtitle={`Episode ${activeEpisode} selected${episodes.length > 0 ? ` - ${episodes.length} total` : ''}`}
               />
               <div className="mt-5 max-h-[30rem] space-y-2 overflow-y-auto pr-1">
                 {episodes.length === 0 ? (

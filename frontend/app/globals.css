@@ -29,6 +29,10 @@
   --font-mono: var(--font-mono);
 }
 
+html {
+  overflow-x: clip;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -38,6 +42,7 @@ body {
     radial-gradient(circle at 85% 20%, rgba(196, 160, 96, 0.12), transparent 18%),
     linear-gradient(180deg, #090b10 0%, #080a0e 100%);
   min-height: 100vh;
+  overflow-x: clip;
 }
 
 body::before {
@@ -64,8 +69,24 @@ a, button {
 }
 
 * {
+  box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: rgba(196, 160, 96, 0.4) rgba(255, 255, 255, 0.04);
+}
+
+main,
+section,
+article,
+header,
+footer,
+div {
+  min-width: 0;
+}
+
+img,
+video,
+canvas {
+  max-width: 100%;
 }
 
 *::-webkit-scrollbar {
@@ -90,6 +111,8 @@ a, button {
 .site-shell {
   position: relative;
   min-height: 100vh;
+  width: 100%;
+  overflow-x: clip;
 }
 
 .site-shell::after {
@@ -109,6 +132,7 @@ a, button {
 }
 
 .surface-panel {
+  max-width: 100%;
   border: 1px solid var(--color-line);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
@@ -131,6 +155,8 @@ a, button {
   font-size: 0.875rem;
   font-weight: 600;
   padding: 0.85rem 1.3rem;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .button-primary {
@@ -181,8 +207,13 @@ a, button {
 }
 
 .lux-input:focus {
-  border-color: rgba(196, 160, 96, 0.5);
-  box-shadow: 0 0 0 4px rgba(196, 160, 96, 0.08);
+  border-color: var(--color-line) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.lux-input:focus-visible {
+  outline: none !important;
 }
 
 .meta-pill,
@@ -193,6 +224,7 @@ a, button {
   gap: 0.45rem;
   border-radius: 999px;
   border: 1px solid var(--color-line);
+  max-width: 100%;
 }
 
 .meta-pill {
@@ -263,10 +295,16 @@ a, button {
   display: none;
 }
 
+.rail-card {
+  width: min(14.5rem, calc(100vw - 3.25rem));
+  flex: 0 0 auto;
+}
+
 /* Native ArtPlayer volume: render only the raw slider beside icon. */
 .art-video-player .art-control-volume {
   display: flex !important;
   align-items: center !important;
+  background: transparent !important;
 }
 
 /* Hide ArtPlayer popup wrappers; we only keep the slider node itself. */
@@ -274,6 +312,19 @@ a, button {
 .art-video-player .art-control-volume .art-volume-inner,
 .art-video-player .art-control-volume .art-volume-val {
   display: none !important;
+}
+
+.art-video-player .art-control-volume::before,
+.art-video-player .art-control-volume::after,
+.art-video-player .art-control-volume .art-volume-slider::before,
+.art-video-player .art-control-volume .art-volume-slider::after,
+.art-video-player .art-control-volume .art-volume-handle::before,
+.art-video-player .art-control-volume .art-volume-handle::after {
+  content: none !important;
+  display: none !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 /* Slider lives directly under .art-control-volume via JS move in AnimePlayer. */
@@ -287,7 +338,21 @@ a, button {
   position: relative !important;
   background: rgba(255, 255, 255, 0.32) !important;
   border-radius: 999px !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  box-shadow: none !important;
   transition: width 0.2s ease, margin-left 0.2s ease, opacity 0.2s ease !important;
+}
+
+.art-video-player .art-control-volume .art-volume-slider {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.art-video-player .art-control-volume .art-volume-slider .art-volume-loaded:not(:first-child),
+.art-video-player .art-control-volume .art-volume-slider .art-volume-indicator:not(:first-child) {
+  display: none !important;
 }
 
 .art-video-player {
@@ -352,6 +417,63 @@ a, button {
   }
 }
 
+@media (max-width: 640px) {
+  .surface-panel {
+    border-radius: 1.35rem;
+  }
+
+  .button-primary,
+  .button-secondary,
+  .button-ghost {
+    gap: 0.45rem;
+    padding: 0.72rem 1rem;
+    font-size: 0.8125rem;
+  }
+
+  .button-ghost {
+    padding-inline: 0.72rem;
+  }
+
+  .lux-input {
+    min-height: 3rem;
+    font-size: 0.9rem;
+  }
+
+  .meta-pill,
+  .tag-chip,
+  .status-badge {
+    font-size: 0.64rem;
+    letter-spacing: 0.07em;
+  }
+
+  .meta-pill {
+    padding: 0.38rem 0.68rem;
+  }
+
+  .tag-chip,
+  .status-badge {
+    padding: 0.34rem 0.62rem;
+  }
+
+  .media-card {
+    border-radius: 1.45rem;
+  }
+
+  .media-card-compact {
+    border-radius: 1.3rem;
+  }
+
+  .art-video-player {
+    border-radius: 1.15rem !important;
+  }
+}
+
+@media (min-width: 640px) {
+  .rail-card {
+    width: 16.5rem;
+  }
+}
+
 .art-video-player .art-control-volume > .art-volume-slider .art-volume-handle {
   position: relative !important;
   width: 100% !important;
@@ -365,12 +487,15 @@ a, button {
   left: 0 !important;
   top: 0 !important;
   height: 100% !important;
+  max-width: 100% !important;
   background: #e11d48 !important;
   border-radius: 999px !important;
+  box-shadow: none !important;
 }
 
 .art-video-player .art-control-volume > .art-volume-slider .art-volume-indicator {
   margin-top: 0 !important;
   transform: translate(-50%, -50%) !important;
   background: #e11d48 !important;
+  box-shadow: none !important;
 }

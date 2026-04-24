@@ -605,19 +605,20 @@ export default function AnimePlayer({
       <div className="relative w-full">
         <div
           ref={containerRef}
-          className="w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl"
+          className="aspect-video w-full overflow-hidden rounded-[1rem] bg-black shadow-2xl sm:rounded-xl"
         />
 
         {/* Skip Intro */}
         {showSkipIntro && (
           <button
             onClick={skipIntro}
-            className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2
+            className="absolute top-3 right-3 z-50 flex items-center gap-1.5 px-3 py-2
                        bg-black/80 hover:bg-black/90 text-white rounded-lg backdrop-blur-sm
+                       text-xs sm:top-4 sm:right-4 sm:gap-2 sm:px-4 sm:text-sm
                        border border-white/20 transition-all duration-200 shadow-lg animate-pulse"
           >
             <RiSkipForwardFill size={16} className="text-[var(--color-brass)]" />
-            <span className="text-sm font-medium">Skip Intro</span>
+            <span className="font-medium">Skip Intro</span>
           </button>
         )}
 
@@ -625,24 +626,25 @@ export default function AnimePlayer({
         {showSkipOutro && (
           <button
             onClick={skipOutro}
-            className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2
+            className="absolute top-3 right-3 z-50 flex items-center gap-1.5 px-3 py-2
                        bg-black/80 hover:bg-black/90 text-white rounded-lg backdrop-blur-sm
+                       text-xs sm:top-4 sm:right-4 sm:gap-2 sm:px-4 sm:text-sm
                        border border-white/20 transition-all duration-200 shadow-lg animate-pulse"
           >
             <RiSkipForwardFill size={16} className="text-[var(--color-brass)]" />
-            <span className="text-sm font-medium">Skip Outro</span>
+            <span className="font-medium">Skip Outro</span>
           </button>
         )}
 
         {/* Autoplay modal */}
         {showAutoPlay && hasNextEpisode && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="bg-gray-900 border border-white/10 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+            <div className="mx-3 w-full max-w-sm rounded-[1.25rem] border border-white/10 bg-gray-900 p-4 shadow-2xl sm:mx-4 sm:rounded-2xl sm:p-6">
               <div className="text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-rose-600/20 flex items-center justify-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-600/20 sm:h-16 sm:w-16">
                   <span className="text-3xl font-bold text-rose-400">{countdown}</span>
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Next Episode Playing Soon</h3>
+                <h3 className="mb-2 text-base font-semibold text-white sm:text-lg">Next Episode Playing Soon</h3>
                 {episodeData?.nextEpisode && (
                   <p className="text-sm text-gray-400 mb-1">
                     Up next: Episode {episodeData.nextEpisode.number}
@@ -651,7 +653,7 @@ export default function AnimePlayer({
                 {episodeData?.nextEpisode?.title && (
                   <p className="text-xs text-gray-500 mb-4">{episodeData.nextEpisode.title}</p>
                 )}
-                <div className="flex gap-3 mt-5">
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                   <button
                     onClick={stopCountdown}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5
@@ -676,22 +678,25 @@ export default function AnimePlayer({
       </div>
 
       {/* Touch controls */}
-      <div className="mt-3 flex items-center justify-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
         <button
           onClick={() => onPrevEpisodeStable()}
           disabled={!hasPrevEpisode}
-          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-[var(--color-mist)]
+          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs text-[var(--color-mist)] sm:px-4 sm:text-sm
                      disabled:cursor-not-allowed disabled:opacity-30"
         >
-          <RiArrowLeftSLine size={16} /> Prev
+          <RiArrowLeftSLine size={16} />
+          <span>Prev</span>
         </button>
         <button
           onClick={() => {
             if (artRef.current) artRef.current.currentTime = Math.max(0, artRef.current.currentTime - 10);
           }}
-          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-[var(--color-mist)]"
+          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs text-[var(--color-mist)] sm:px-4 sm:text-sm"
         >
-          <RiHistoryLine size={14} /> Back 10s
+          <RiHistoryLine size={14} />
+          <span className="sm:hidden">-10s</span>
+          <span className="hidden sm:inline">Back 10s</span>
         </button>
         <button
           onClick={() => {
@@ -700,25 +705,29 @@ export default function AnimePlayer({
               artRef.current.currentTime = Math.min(dur, artRef.current.currentTime + 10);
             }
           }}
-          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-[var(--color-mist)]"
+          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs text-[var(--color-mist)] sm:px-4 sm:text-sm"
         >
-          <RiForward10Line size={14} /> Forward 10s
+          <RiForward10Line size={14} />
+          <span className="sm:hidden">+10s</span>
+          <span className="hidden sm:inline">Forward 10s</span>
         </button>
         <button
           onClick={() => { if (showSkipIntro) skipIntro(); else if (showSkipOutro) skipOutro(); }}
           disabled={!showSkipIntro && !showSkipOutro}
-          className="flex items-center gap-1.5 rounded-full border border-[rgba(196,160,96,0.24)] bg-[rgba(196,160,96,0.12)] px-4 py-2 text-sm text-[var(--color-brass)]
+          className="flex items-center gap-1.5 rounded-full border border-[rgba(196,160,96,0.24)] bg-[rgba(196,160,96,0.12)] px-3 py-2 text-xs text-[var(--color-brass)] sm:px-4 sm:text-sm
                      disabled:cursor-not-allowed disabled:opacity-30"
         >
-          <RiSkipForwardFill size={14} /> Skip
+          <RiSkipForwardFill size={14} />
+          <span>Skip</span>
         </button>
         <button
           onClick={() => onNextEpisodeStable()}
           disabled={!hasNextEpisode}
-          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-[var(--color-mist)]
+          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs text-[var(--color-mist)] sm:px-4 sm:text-sm
                      disabled:cursor-not-allowed disabled:opacity-30"
         >
-          Next <RiArrowRightSLine size={16} />
+          <span>Next</span>
+          <RiArrowRightSLine size={16} />
         </button>
       </div>
     </>

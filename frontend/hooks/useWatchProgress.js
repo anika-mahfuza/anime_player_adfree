@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { apiUrl } from '@/lib/apiBase';
+import { ensureMinimumDelay, fetchAnimeMetadataBatch } from '@/lib/anilist';
 
 const STORAGE_KEY = 'aniestream_progress';
 
@@ -49,27 +49,17 @@ export function useWatchProgress() {
   return { updateProgress, getProgress, clearProgress };
 }
 
-async function fetchAnimeMetadata(id) {
-  try {
-    const query = `
-      query ($id: Int) {
-        Media(id: $id, type: ANIME) {
-          id title { romaji english }
-          coverImage { large }
-          episodes
-        }
-      }
-    `;
-    const res = await fetch(apiUrl('/api/anilist'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables: { id } })
-    });
-    const j = await res.json();
-    return j.data?.Media || null;
-  } catch {
-    return null;
-  }
+function normalizeContinueItem(meta, data) {
+  if (!meta?.id) return null;
+
+  return {
+    id: meta.id,
+    seasonId: data.seasonId || meta.id,
+    episode: data.episode,
+    totalEpisodes: meta.episodes || 1,
+    title: meta.title?.english || meta.title?.romaji || 'Unknown',
+    coverImage: meta.coverImage?.large,
+  };
 }
 
 export function useContinueWatching(limit = 6) {
@@ -105,28 +95,20 @@ export function useContinueWatching(limit = 6) {
       // Reserve ids immediately so double-clicks can't enqueue duplicates.
       nextBatch.forEach(([id]) => loadedIds.current.add(id));
 
-      const fetched = await Promise.all(
-        nextBatch.map(async ([id, data]) => {
-          const parsedId = Number.parseInt(id, 10);
-          const meta = await fetchAnimeMetadata(parsedId);
+      const metaList = await fetchAnimeMetadataBatch(nextBatch.map(([id]) => id));
+      const metaById = new Map(metaList.map((item) => [String(item.id), item]));
 
+      const valid = nextBatch
+        .map(([id, data]) => {
+          const meta = metaById.get(String(Number.parseInt(id, 10)));
           if (!meta) {
             loadedIds.current.delete(id);
             return null;
           }
-
-          return {
-            id: parsedId,
-            seasonId: data.seasonId || parsedId,
-            episode: data.episode,
-            totalEpisodes: meta.episodes || 1,
-            title: meta.title?.english || meta.title?.romaji || 'Unknown',
-            coverImage: meta.coverImage?.large,
-          };
+          return normalizeContinueItem(meta, data);
         })
-      );
+        .filter(Boolean);
 
-      const valid = fetched.filter(Boolean);
       if (valid.length > 0) {
         setItems(prev => {
           const byId = new Map(prev.map(item => [item.id, item]));
@@ -145,40 +127,46 @@ export function useContinueWatching(limit = 6) {
 
   useEffect(() => {
     const entries = buildSortedEntries();
+    const startedAt = Date.now();
     
     const initial = entries.slice(0, limit);
     
     if (initial.length === 0) {
-      setLoading(false);
+      ensureMinimumDelay(startedAt, 350).then(() => setLoading(false));
       return;
     }
     
     loadedIds.current = new Set();
 
-    Promise.all(
-      initial.map(async ([id, data]) => {
-        loadedIds.current.add(id);
-        const parsedId = Number.parseInt(id, 10);
-        const meta = await fetchAnimeMetadata(parsedId);
-        if (meta) {
-          return {
-            id: parsedId,
-            seasonId: data.seasonId || parsedId,
-            episode: data.episode,
-            totalEpisodes: meta.episodes || 1,
-            title: meta.title?.english || meta.title?.romaji || 'Unknown',
-            coverImage: meta.coverImage?.large
-          };
-        }
-        loadedIds.current.delete(id);
-        return null;
+    initial.forEach(([id]) => loadedIds.current.add(id));
+
+    fetchAnimeMetadataBatch(initial.map(([id]) => id))
+      .then(async (metaList) => {
+        const metaById = new Map(metaList.map((item) => [String(item.id), item]));
+
+        const validItems = initial
+          .map(([id, data]) => {
+            const meta = metaById.get(String(Number.parseInt(id, 10)));
+            if (!meta) {
+              loadedIds.current.delete(id);
+              return null;
+            }
+            return normalizeContinueItem(meta, data);
+          })
+          .filter(Boolean);
+
+        setItems(validItems);
+        setHasMore(entries.length > limit);
+        await ensureMinimumDelay(startedAt, 350);
+        setLoading(false);
       })
-    ).then(results => {
-      const validItems = results.filter(Boolean);
-      setItems(validItems);
-      setHasMore(entries.length > limit);
-      setLoading(false);
-    });
+      .catch(async () => {
+        loadedIds.current = new Set();
+        setItems([]);
+        setHasMore(false);
+        await ensureMinimumDelay(startedAt, 350);
+        setLoading(false);
+      });
   }, [limit, buildSortedEntries]);
 
   return { items, loading, loadingMore, hasMore, loadMore };

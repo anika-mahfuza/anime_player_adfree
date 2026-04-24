@@ -3,29 +3,10 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { RiLoader4Line, RiSearchEyeLine, RiSparkling2Fill } from '@remixicon/react';
+import { RiSearchEyeLine, RiSparkling2Fill } from '@remixicon/react';
 import { EmptyState, MediaCard, SearchField, SectionHeading, SurfacePanel, TopNav } from '@/components/ui';
-import { SearchPageSkeleton } from '@/components/skeletons';
-import { apiUrl } from '@/lib/apiBase';
-
-async function anilist(query, variables = {}) {
-  try {
-    const response = await fetch(apiUrl('/api/anilist'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!response.ok) {
-      if (response.status === 429) return null;
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    return payload.data;
-  } catch (error) {
-    console.error('AniList fetch error:', error.message);
-    return null;
-  }
-}
+import { MediaGridSkeleton, SearchPageSkeleton } from '@/components/skeletons';
+import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
 
 const SEARCH_QUERY = `
 query ($s: String, $page: Int) {
@@ -57,14 +38,20 @@ function SearchInner() {
     }
 
     setLoading(true);
+    const startedAt = Date.now();
     try {
-      const data = await anilist(SEARCH_QUERY, { s: term, page: 1 });
+      const data = await anilistRequest(SEARCH_QUERY, { s: term, page: 1 }, {
+        cacheTtlMs: 60 * 1000,
+        key: `search:${term.trim().toLowerCase()}:1`,
+      });
       const media = (data?.Page?.media || []).filter((item) => item.id);
       setResults(media);
       setTotal(data?.Page?.pageInfo?.total ?? media.length);
     } catch {
       setResults([]);
+      setTotal(0);
     } finally {
+      await ensureMinimumDelay(startedAt, 450);
       setLoading(false);
     }
   }, []);
@@ -81,7 +68,7 @@ function SearchInner() {
     timerRef.current = setTimeout(() => {
       router.replace(value.trim() ? `/search?q=${encodeURIComponent(value.trim())}` : '/search', { scroll: false });
       doSearch(value);
-    }, 280);
+    }, 420);
   };
 
   const handleSubmit = (event) => {
@@ -120,7 +107,7 @@ function SearchInner() {
       </TopNav>
 
       <section className="mx-auto max-w-screen-xl px-4 py-8 sm:px-6 sm:py-10">
-        <SurfacePanel className="mb-8 overflow-hidden px-5 py-6 sm:px-8 sm:py-8">
+        <SurfacePanel className="mb-8 overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
           <SectionHeading
             eyebrow="Search Archive"
             title={query ? `Results for “${query}”` : 'Search the catalogue'}
@@ -139,10 +126,7 @@ function SearchInner() {
         </SurfacePanel>
 
         {loading ? (
-          <SurfacePanel className="flex items-center justify-center px-6 py-16 text-sm text-[var(--color-muted)]">
-            <RiLoader4Line size={18} className="mr-2 animate-spin text-[var(--color-brass)]" />
-            Searching the catalogue...
-          </SurfacePanel>
+          <MediaGridSkeleton />
         ) : results.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {results.map((anime) => (

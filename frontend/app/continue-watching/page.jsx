@@ -28,13 +28,13 @@ function ContinueGridCard({ item }) {
           </div>
         )}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.12),rgba(8,10,14,0.9))]" />
-        <div className="absolute inset-x-0 top-0 flex justify-between p-3">
+        <div className="absolute inset-x-0 top-0 flex justify-between p-2.5 sm:p-3">
           <ContinueBadge>Continue</ContinueBadge>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-[rgba(8,10,14,0.56)] text-[var(--color-ivory)] transition duration-300 group-hover:bg-[rgba(139,40,61,0.92)]">
-            <RiPlayMiniFill size={20} className="translate-x-[1px]" />
+          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-[rgba(8,10,14,0.56)] text-[var(--color-ivory)] transition duration-300 group-hover:bg-[rgba(139,40,61,0.92)] sm:h-11 sm:w-11">
+            <RiPlayMiniFill size={18} className="translate-x-[1px]" />
           </span>
         </div>
-        <div className="absolute inset-x-0 bottom-0 p-4">
+        <div className="absolute inset-x-0 bottom-0 p-3.5 sm:p-4">
           <div className="mb-2 flex items-center justify-between text-[0.68rem] uppercase tracking-[0.16em] text-[var(--color-mist)]">
             <span>Episode {item.episode}</span>
             <span>{item.totalEpisodes || '?'}</span>
@@ -47,9 +47,9 @@ function ContinueGridCard({ item }) {
           </div>
         </div>
       </div>
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex flex-1 flex-col gap-2.5 p-3.5 sm:gap-3 sm:p-4">
         <div>
-          <h2 className="line-clamp-2 text-base font-medium leading-6 text-[var(--color-ivory)]">{item.title}</h2>
+          <h2 className="line-clamp-2 text-[0.95rem] font-medium leading-6 text-[var(--color-ivory)] sm:text-base">{item.title}</h2>
           <p className="mt-2 flex items-center gap-2 text-sm text-[var(--color-muted)]">
             <RiTimeLine size={15} />
             Continue from episode {item.episode}
@@ -77,7 +77,7 @@ export default function ContinueWatchingPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-[0.72rem] uppercase tracking-[0.22em] text-[var(--color-brass)]">Resume Library</p>
-            <h1 className="mt-1 font-[family:var(--font-display)] text-2xl text-[var(--color-ivory)] sm:text-3xl">
+            <h1 className="mt-1 font-[family:var(--font-display)] text-xl text-[var(--color-ivory)] sm:text-3xl">
               Continue Watching
             </h1>
           </div>
@@ -85,7 +85,7 @@ export default function ContinueWatchingPage() {
       </TopNav>
 
       <section className="mx-auto max-w-screen-xl px-4 py-8 sm:px-6 sm:py-10">
-        <SurfacePanel className="mb-8 overflow-hidden px-5 py-6 sm:px-8 sm:py-8">
+        <SurfacePanel className="mb-8 overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
           <SectionHeading
             eyebrow="Personal Queue"
             title="Pick up right where you left off."
