@@ -7,5 +7,8 @@
     "dev": "node --env-file-if-exists=.env server.js",
     "start": "node --env-file-if-exists=.env server.js",
     "build": "node --check server.js && node --check src/app.js"
+  },
+  "dependencies": {
+    "@consumet/extensions": "^1.8.8"
   }
 }

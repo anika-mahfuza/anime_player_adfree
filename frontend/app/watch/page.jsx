@@ -76,7 +76,7 @@ async function fetchSkipTimes({
     if (useMock) params.set('mock', 'true');
 
     return await pacedJsonFetch(apiUrl(`/api/skip-times?${params.toString()}`), undefined, {
-      key: `skip-times:v2:${params.toString()}`,
+      key: `skip-times:v3:${params.toString()}`,
       cacheTtlMs: 5 * 60 * 1000,
     });
   } catch (error) {

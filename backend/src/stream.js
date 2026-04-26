@@ -32,6 +32,7 @@ function stripSeasonPart(value) {
     .replace(/\b\d+(st|nd|rd|th)\s+season\b/gi, '')
     .replace(/\bpart\s*\d+\b/gi, '')
     .replace(/\bcour\s*\d+\b/gi, '')
+    .replace(/\b(?:ii|iii|iv|v|vi|vii|viii|ix|x)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -76,6 +77,12 @@ function parseSeasonMarker(value) {
     text.match(/\bcour\s+(\d+)\b/);
 
   if (explicitSeason) return Number.parseInt(explicitSeason[1], 10);
+
+  const romanMatch = text.match(/\b(ii|iii|iv|v|vi|vii|viii|ix|x)\b/);
+  if (romanMatch) {
+    const map = { ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+    return map[romanMatch[1]];
+  }
 
   if (/\bmovie\b/.test(text)) return 0;
   return null;
