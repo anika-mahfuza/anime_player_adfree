@@ -55,36 +55,6 @@ const ANIME_QUERY = `
   }
 `;
 
-async function fetchSkipTimes({
-  malId,
-  anilistId,
-  episode,
-  episodeLengthSeconds,
-  candidateMalIds = [],
-  candidateAnilistIds = [],
-}) {
-  try {
-    const params = new URLSearchParams();
-    params.set('malId', String(malId));
-    if (anilistId) params.set('anilistId', String(anilistId));
-    params.set('episode', String(episode));
-    if (episodeLengthSeconds) params.set('episodeLength', String(Math.round(episodeLengthSeconds)));
-    if (candidateMalIds.length) params.set('candidateMalIds', candidateMalIds.join(','));
-    if (candidateAnilistIds.length) params.set('candidateAnilistIds', candidateAnilistIds.join(','));
-
-    const useMock = new URLSearchParams(window.location.search).get('mock') === 'true';
-    if (useMock) params.set('mock', 'true');
-
-    return await pacedJsonFetch(apiUrl(`/api/skip-times?${params.toString()}`), undefined, {
-      key: `skip-times:v3:${params.toString()}`,
-      cacheTtlMs: 5 * 60 * 1000,
-    });
-  } catch (error) {
-    console.log('Skip times not available for this anime:', error.message);
-    return null;
-  }
-}
-
 async function fetchEpisodes(malId) {
   const baseKey = `episodes:${malId}`;
   const first = await pacedJsonFetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=1`, undefined, {
@@ -136,16 +106,6 @@ async function fetchStreamUrl({
   if (payload.error) throw new Error(payload.error ?? 'Stream fetch failed');
   return payload.streamUrl;
 }
-
-const SKIP_TIME_FALLBACK_RELATIONS = new Set([
-  'PREQUEL',
-  'SEQUEL',
-  'SIDE_STORY',
-  'SPIN_OFF',
-  'ALTERNATIVE',
-  'COMPILATION',
-  'OTHER',
-]);
 
 function EpisodeButton({ episode, active, loading, onClick }) {
   return (
@@ -350,50 +310,6 @@ function WatchPageContent() {
   useEffect(() => {
     setSkipTimes(null);
   }, [anime?.id, activeEpisode]);
-
-  useEffect(() => {
-    if (!anime?.idMal || !activeEpisode || !hasStarted || !streamUrl || !videoDurationSec) return;
-
-    const candidateMalIds = [
-      anime.idMal,
-      ...(anime.relations?.edges
-        ?.filter((edge) =>
-          SKIP_TIME_FALLBACK_RELATIONS.has(edge?.relationType) &&
-          edge?.node?.type === 'ANIME' &&
-          edge?.node?.idMal
-        )
-        .map((edge) => edge.node.idMal) ?? []),
-    ].filter(Boolean);
-
-    const candidateAnilistIds = [
-      anime.id,
-      ...(anime.relations?.edges
-        ?.filter((edge) =>
-          SKIP_TIME_FALLBACK_RELATIONS.has(edge?.relationType) &&
-          edge?.node?.type === 'ANIME' &&
-          edge?.node?.id
-        )
-        .map((edge) => edge.node.id) ?? []),
-    ].filter(Boolean);
-
-    let cancelled = false;
-
-    fetchSkipTimes({
-      malId: anime.idMal,
-      anilistId: anime.id,
-      episode: activeEpisode,
-      episodeLengthSeconds: videoDurationSec,
-      candidateMalIds,
-      candidateAnilistIds,
-    }).then((payload) => {
-      if (cancelled) return;
-      setSkipTimes(payload?.skipTimes || null);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [anime, activeEpisode, hasStarted, streamUrl, videoDurationSec]);
 
   const handleDurationKnown = useCallback((seconds) => {
     if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return;
