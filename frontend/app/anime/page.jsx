@@ -211,16 +211,24 @@ function AnimeDetailsInner() {
       ? 'Resume Episode 1'
       : 'Play Now';
   const watchDestination = watchHref(anime.id, { episode: saved?.episode, time: resumeTime });
+  const hasBanner = Boolean(anime.bannerImage);
+  const heroBackdrop = anime.bannerImage || anime.coverImage?.extraLarge || anime.coverImage?.large || null;
 
   return (
     <main className="site-shell">
       <section className="relative overflow-hidden border-b border-white/6">
         <div className="absolute inset-0">
-          {anime.bannerImage ? (
-            <img src={anime.bannerImage} alt="" className="h-full w-full object-cover" />
-          ) : anime.coverImage?.extraLarge ? (
-            <img src={anime.coverImage.extraLarge} alt="" className="h-full w-full object-cover" />
+          {heroBackdrop ? (
+            <img
+              src={heroBackdrop}
+              alt=""
+              className={hasBanner
+                ? 'h-full w-full object-cover object-center opacity-70'
+                : 'h-full w-full object-contain object-center opacity-35 sm:object-cover sm:opacity-55'}
+            />
           ) : null}
+          <div className="absolute inset-0 bg-[linear-gradient(92deg,rgba(8,10,14,0.94)_0%,rgba(8,10,14,0.84)_38%,rgba(8,10,14,0.74)_100%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.35)_0%,rgba(8,10,14,0.72)_100%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(196,160,96,0.18),transparent_28%),radial-gradient(circle_at_85%_15%,rgba(139,40,61,0.28),transparent_30%)]" />
         </div>
 
