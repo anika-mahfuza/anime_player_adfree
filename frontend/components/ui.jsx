@@ -27,11 +27,11 @@ export function cx(...values) {
 export function BrandMark({ compact = false }) {
   return (
     <Link href="/" className="inline-flex max-w-full items-center gap-2.5 sm:gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[rgba(139,40,61,0.9)]">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[1.15rem] bg-[linear-gradient(145deg,rgba(139,40,61,0.95),rgba(84,24,37,0.95))] shadow-[0_16px_40px_rgba(48,13,21,0.55)] sm:h-11 sm:w-11 sm:rounded-[1.35rem]">
         <Image src="/logo.png" alt="AniStream" width={88} height={88} className="h-full w-full object-contain" />
       </div>
       <span className="min-w-0 flex flex-col leading-none">
-        <span className="truncate font-[family:var(--font-display)] text-[0.92rem] tracking-[0.15em] text-[var(--color-mist)] uppercase">
+        <span className="truncate font-[family:var(--font-display)] text-[1rem] tracking-[0.18em] text-[var(--color-mist)] uppercase sm:text-[1.15rem] sm:tracking-[0.2em]">
           AniStream
         </span>
         {!compact && (
@@ -46,7 +46,7 @@ export function BrandMark({ compact = false }) {
 
 export function TopNav({ children, rightSlot, backHref, backLabel = 'Back' }) {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/6 bg-[rgba(8,10,14,0.95)] md:bg-[rgba(8,10,14,0.78)] md:backdrop-blur-2xl">
+    <header className="sticky top-0 z-50 border-b border-white/6 bg-[rgba(8,10,14,0.78)] backdrop-blur-2xl">
       <div className="mx-auto flex max-w-screen-xl flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap sm:gap-4 sm:px-6 sm:py-4">
         {backHref ? (
           <Link href={backHref} className="button-ghost shrink-0 px-2.5 py-2 sm:px-4">

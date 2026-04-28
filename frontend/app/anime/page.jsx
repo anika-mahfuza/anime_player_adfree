@@ -206,8 +206,8 @@ function AnimeDetailsInner() {
           ) : anime.coverImage?.extraLarge ? (
             <img src={anime.coverImage.extraLarge} alt="" className="h-full w-full object-cover" />
           ) : null}
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.35),rgba(8,10,14,0.95))]" />
-          <div className="absolute inset-0 hidden sm:block bg-[radial-gradient(circle_at_20%_10%,rgba(196,160,96,0.18),transparent_28%),radial-gradient(circle_at_85%_15%,rgba(139,40,61,0.28),transparent_30%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.25),rgba(8,10,14,0.92))]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(196,160,96,0.18),transparent_28%),radial-gradient(circle_at_85%_15%,rgba(139,40,61,0.28),transparent_30%)]" />
         </div>
 
         <div className="relative mx-auto max-w-screen-xl px-4 py-6 sm:px-6 sm:py-10">
