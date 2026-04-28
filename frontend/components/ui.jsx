@@ -46,7 +46,7 @@ export function BrandMark({ compact = false }) {
 
 export function TopNav({ children, rightSlot, backHref, backLabel = 'Back' }) {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/6 bg-[rgba(8,10,14,0.78)] backdrop-blur-2xl">
+    <header className="sticky top-0 z-50 border-b border-white/6 bg-[rgba(8,10,14,0.95)] md:bg-[rgba(8,10,14,0.78)] md:backdrop-blur-2xl">
       <div className="mx-auto flex max-w-screen-xl flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap sm:gap-4 sm:px-6 sm:py-4">
         {backHref ? (
           <Link href={backHref} className="button-ghost shrink-0 px-2.5 py-2 sm:px-4">

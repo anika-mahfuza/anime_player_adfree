@@ -8,5 +8,9 @@
     "build:backend": "npm --prefix backend run build",
     "lint:frontend": "npm --prefix frontend run lint",
     "start:backend": "npm --prefix backend run start"
+  },
+  "dependencies": {
+    "@remixicon/react": "^4.9.0",
+    "react": "^19.2.5"
   }
 }
