@@ -29,6 +29,7 @@ function useCallbackRef(fn) {
 // ── component ─────────────────────────────────────────────────────────────────
 export default function AnimePlayer({
   url,
+  subtitles = [],
   episodeData,
   skipTimes,
   onDurationKnown,
@@ -322,7 +323,7 @@ export default function AnimePlayer({
 
     if (!containerRef.current || !url) return;
 
-    const art = new Artplayer({
+    const options = {
       container: containerRef.current,
       url,
       type: 'm3u8',
@@ -407,7 +408,23 @@ export default function AnimePlayer({
       theme: '#e11d48',
       lang: navigator.language.toLowerCase(),
       moreVideoAttr: { crossOrigin: 'anonymous' },
-    });
+    };
+
+    if (subtitles?.length > 0) {
+      options.subtitle = {
+        url: subtitles[0].url,
+        type: 'vtt',
+        escape: false,
+        style: {
+          color: '#ffffff',
+          fontSize: '28px',
+          textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0px 0px 6px #000000',
+        },
+        encoding: 'utf-8',
+      };
+    }
+
+    const art = new Artplayer(options);
 
     artRef.current = art;
 
@@ -590,7 +607,7 @@ export default function AnimePlayer({
       artRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]); // only url — callbacks are stable refs
+  }, [url, subtitles]); // only url and subtitles — callbacks are stable refs
 
   // re-inject markers when skipTimes arrive (may come after player is ready)
   useEffect(() => {

@@ -164,8 +164,13 @@ function normalizeJikanRecommendations(recommendations = []) {
 }
 
 export async function searchJikanAnime(term, { limit = 24, page = 1, key, cacheTtlMs = 60 * 1000 } = {}) {
+  const normalizedTerm = String(term || '').trim();
+  const malIdMatch = normalizedTerm.match(/\bmal\D*(\d{1,7})\b/i);
+  const malId = malIdMatch ? Number.parseInt(malIdMatch[1], 10) : null;
+  const cleanTerm = normalizedTerm.replace(/\(.*?\bmal\D*\d{1,7}\b.*?\)/gi, '').trim() || normalizedTerm;
+
   const payload = await jikanRequest('/anime', {
-    q: term,
+    q: cleanTerm,
     page,
     limit,
     order_by: 'popularity',
@@ -179,6 +184,21 @@ export async function searchJikanAnime(term, { limit = 24, page = 1, key, cacheT
   const media = Array.isArray(payload?.data)
     ? payload.data.map(normalizeJikanAnime).filter(Boolean)
     : [];
+
+  if (malId) {
+    try {
+      const byIdPayload = await jikanRequest(`/anime/${malId}`, {}, {
+        key: `${key || `jikan-search:${normalizedTerm.toLowerCase()}:${page}:${limit}`}:mal:${malId}`,
+        cacheTtlMs,
+      });
+      const byIdMedia = normalizeJikanAnime(byIdPayload?.data);
+      if (byIdMedia && !media.some((item) => item.id === byIdMedia.id)) {
+        media.unshift(byIdMedia);
+      }
+    } catch {
+      // Ignore MAL ID lookup failures and keep text-search results.
+    }
+  }
 
   return {
     media,

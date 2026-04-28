@@ -533,3 +533,13 @@ canvas {
   background: #e11d48 !important;
   box-shadow: none !important;
 }
+
+
+/* Fix ArtPlayer Subtitle Tags */
+.art-subtitle b, .art-subtitle strong { font-weight: bold !important; }
+.art-subtitle i, .art-subtitle em { font-style: italic !important; }
+
+.art-subtitle u { text-decoration: underline !important; }
+.art-subtitle ruby { ruby-align: center; }
+.art-subtitle rt { font-size: 0.6em; }
+.art-subtitle font, .art-subtitle c { color: inherit; }

@@ -495,6 +495,8 @@ export async function handleStream({ req, res, url }) {
 
     let streamUrl = null;
     let referer = 'https://vibeplayer.site/';
+    let subtitleUrl = null;
+    let subtitleLang = 'English';
 
     for (const server of sortedServers) {
       if (server.includes('streamsb') || server.includes('streamshide')) {
@@ -503,7 +505,7 @@ export async function handleStream({ req, res, url }) {
       } else if (server.includes('dood')) {
         streamUrl = await getDoodStream(server);
         referer = safeOrigin(server, referer);
-      } else if (server.includes('vibeplayer.site')) {
+      } else if (server.includes('vibeplayer.site') || server.includes('otakuhg.site') || server.includes('otakuvid.online')) {
         streamUrl = await extractM3u8FromUrl(server);
         referer = safeOrigin(server, referer);
       } else if (server.includes('.m3u8')) {
@@ -511,7 +513,16 @@ export async function handleStream({ req, res, url }) {
         referer = safeOrigin(server, referer);
       }
 
-      if (streamUrl) break;
+      if (streamUrl) {
+        try {
+          const sUrl = new URL(server);
+          subtitleUrl = sUrl.searchParams.get('sub') || sUrl.searchParams.get('caption_1');
+          if (sUrl.searchParams.get('sub_1')) {
+            subtitleLang = sUrl.searchParams.get('sub_1');
+          }
+        } catch (e) {}
+        break;
+      }
     }
 
     if (!streamUrl) {
@@ -525,6 +536,7 @@ export async function handleStream({ req, res, url }) {
 
     return sendJson(res, 200, {
       streamUrl: proxiedStreamUrl,
+      subtitles: subtitleUrl ? [{ url: subtitleUrl, name: subtitleLang, type: 'vtt' }] : [],
       resolved: {
         slug: series.slug,
         title: series.title,

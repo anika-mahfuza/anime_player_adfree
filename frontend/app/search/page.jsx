@@ -8,6 +8,7 @@ import { EmptyState, MediaCard, SearchField, SectionHeading, SurfacePanel, TopNa
 import { MediaGridSkeleton, SearchPageSkeleton } from '@/components/skeletons';
 import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
 import { searchJikanAnime } from '@/lib/jikan';
+import { mediaTitle } from '@/lib/media';
 
 const SEARCH_QUERY = `
 query ($s: String, $page: Int) {
@@ -19,6 +20,74 @@ query ($s: String, $page: Int) {
     }
   }
 }`;
+
+function normalizeSearchTerm(term) {
+  const text = String(term || '').trim();
+  if (!text) return '';
+  return text.replace(/\(.*?\bmal\D*\d{1,7}\b.*?\)/gi, '').trim() || text;
+}
+
+function normalizeForCompare(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function mediaIdentity(media, index = 0) {
+  if (media?.id != null) return `id-${media.id}`;
+  if (media?.idMal != null) return `mal-${media.idMal}`;
+  const title = normalizeForCompare(mediaTitle(media));
+  return title ? `title-${title}` : `idx-${index}`;
+}
+
+function scoreSearchMatch(term, media) {
+  const normalizedTerm = normalizeForCompare(term);
+  if (!normalizedTerm) return 0;
+
+  const titles = [
+    media?.title?.english,
+    media?.title?.romaji,
+    media?.title?.native,
+    mediaTitle(media),
+  ]
+    .map(normalizeForCompare)
+    .filter(Boolean);
+
+  const primary = titles[0] || '';
+  const words = normalizedTerm.split(' ').filter(Boolean);
+
+  let score = 0;
+  if (titles.includes(normalizedTerm)) score += 220;
+  if (primary === normalizedTerm) score += 140;
+  if (titles.some((value) => value.startsWith(normalizedTerm))) score += 95;
+  if (titles.some((value) => value.includes(normalizedTerm))) score += 72;
+  if (words.length > 0) {
+    const matchedWords = words.filter((word) => titles.some((value) => value.includes(word))).length;
+    score += matchedWords * 22;
+  }
+  if (media?.meanScore) score += Number(media.meanScore) / 100;
+  return score;
+}
+
+function mergeAndRankResults(term, preferred = [], fallback = []) {
+  const bucket = new Map();
+  [...preferred, ...fallback].forEach((media, index) => {
+    const identity = mediaIdentity(media, index);
+    if (!bucket.has(identity)) {
+      bucket.set(identity, media);
+    }
+  });
+
+  return Array.from(bucket.values()).sort((a, b) => {
+    const scoreDiff = scoreSearchMatch(term, b) - scoreSearchMatch(term, a);
+    if (scoreDiff !== 0) return scoreDiff;
+    const scoreTieBreak = Number(b?.meanScore || 0) - Number(a?.meanScore || 0);
+    if (scoreTieBreak !== 0) return scoreTieBreak;
+    return Number(b?.popularity || 0) - Number(a?.popularity || 0);
+  });
+}
 
 function SearchInner() {
   const searchParams = useSearchParams();
@@ -32,7 +101,8 @@ function SearchInner() {
   const timerRef = useRef(null);
 
   const doSearch = useCallback(async (term) => {
-    if (!term.trim()) {
+    const normalizedTerm = normalizeSearchTerm(term);
+    if (!normalizedTerm) {
       setResults([]);
       setTotal(0);
       return;
@@ -41,13 +111,27 @@ function SearchInner() {
     setLoading(true);
     const startedAt = Date.now();
     try {
-      const data = await anilistRequest(SEARCH_QUERY, { s: term, page: 1 }, {
+      let aniListResults = [];
+      let aniListTotal = 0;
+
+      const data = await anilistRequest(SEARCH_QUERY, { s: normalizedTerm, page: 1 }, {
         cacheTtlMs: 60 * 1000,
-        key: `search:${term.trim().toLowerCase()}:1`,
+        key: `search:${normalizedTerm.toLowerCase()}:1`,
       });
-      const media = (data?.Page?.media || []).filter((item) => item.id);
-      setResults(media);
-      setTotal(data?.Page?.pageInfo?.total ?? media.length);
+      const media = (data?.Page?.media || []).filter((item) => item.id || item.idMal);
+      aniListResults = Array.from(
+        new Map(media.map((item, index) => [mediaIdentity(item, index), item])).values()
+      );
+      aniListTotal = data?.Page?.pageInfo?.total ?? aniListResults.length;
+
+      const fallback = await searchJikanAnime(term, {
+        page: 1,
+        limit: 24,
+        key: `search:jikan:${term.trim().toLowerCase()}:1`,
+      });
+      const merged = mergeAndRankResults(normalizedTerm, aniListResults, fallback.media || []);
+      setResults(merged);
+      setTotal(Math.max(aniListTotal, fallback.total || 0, merged.length));
     } catch {
       try {
         const fallback = await searchJikanAnime(term, {
@@ -55,8 +139,9 @@ function SearchInner() {
           limit: 24,
           key: `search:jikan:${term.trim().toLowerCase()}:1`,
         });
-        setResults(fallback.media);
-        setTotal(fallback.total);
+        const rankedFallback = mergeAndRankResults(normalizedTerm, [], fallback.media || []);
+        setResults(rankedFallback);
+        setTotal(Math.max(fallback.total || 0, rankedFallback.length));
       } catch {
         setResults([]);
         setTotal(0);

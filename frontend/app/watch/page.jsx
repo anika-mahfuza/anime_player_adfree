@@ -215,7 +215,7 @@ async function fetchStreamUrl({
     cacheTtlMs: 20 * 1000,
   });
   if (payload.error) throw new Error(payload.error ?? 'Stream fetch failed');
-  return payload.streamUrl;
+  return { streamUrl: payload.streamUrl, subtitles: payload.subtitles || [] };
 }
 
 async function fetchSkipTimes(malId, episode, language = 'sub') {
@@ -311,6 +311,7 @@ function WatchPageContent() {
   const [episodes, setEpisodes] = useState([]);
   const [activeEpisode, setActiveEpisode] = useState(1);
   const [streamUrl, setStreamUrl] = useState('');
+  const [subtitles, setSubtitles] = useState([]);
   const [metaLoading, setMetaLoading] = useState(true);
   const [streamLoading, setStreamLoading] = useState(false);
   const [streamError, setStreamError] = useState('');
@@ -341,6 +342,7 @@ function WatchPageContent() {
     setActiveEpisode(1);
     setHasStarted(false);
     setStreamUrl('');
+    setSubtitles([]);
     setStreamError('');
 
     const anilistId = Number.parseInt(id, 10);
@@ -432,7 +434,8 @@ function WatchPageContent() {
         duration: anime?.duration,
       });
 
-      setStreamUrl(nextUrl);
+      setStreamUrl(nextUrl.streamUrl);
+      setSubtitles(nextUrl.subtitles || []);
     } catch (error) {
       setStreamError(error.message);
     } finally {
@@ -443,6 +446,7 @@ function WatchPageContent() {
   const handleStartWatching = useCallback(() => {
     setHasStarted(true);
     setStreamUrl('');
+    setSubtitles([]);
   }, []);
 
   useEffect(() => {
@@ -660,6 +664,7 @@ function WatchPageContent() {
                 ) : (
                   <AnimePlayer
                     url={streamUrl}
+                    subtitles={subtitles}
                     episodeData={{
                       current: currentEpisodeData,
                       nextEpisode: nextEpisodeData ? { number: nextEpisodeData.mal_id, title: nextEpisodeData.title } : null,

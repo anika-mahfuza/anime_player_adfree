@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -160,6 +161,12 @@ query ($s: String) {
   }
 }`;
 
+function normalizeSearchTerm(term) {
+  const text = String(term || '').trim();
+  if (!text) return '';
+  return text.replace(/\(.*?\bmal\D*\d{1,7}\b.*?\)/gi, '').trim() || text;
+}
+
 const JIKAN_SECONDARY_KEYS = ['popular', 'topRated', 'upcoming', 'movies', 'action', 'romance', 'fantasy', 'comedy'];
 
 function mediaHref(media) {
@@ -239,61 +246,127 @@ function SearchBar() {
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [panelStyle, setPanelStyle] = useState(null);
+
   const timerRef = useRef(null);
   const wrapRef = useRef(null);
+  const resultsRef = useRef(null);
   const router = useRouter();
+
+  const updatePanelPosition = useCallback(() => {
+    if (!wrapRef.current) return;
+    const rect = wrapRef.current.getBoundingClientRect();
+    setPanelStyle({
+      left: Math.max(12, rect.left),
+      top: rect.bottom + 12,
+      width: rect.width,
+    });
+  }, []);
 
   useEffect(() => {
     function handler(event) {
-      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
+      if (wrapRef.current?.contains(event.target)) return;
+      if (resultsRef.current?.contains(event.target)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    updatePanelPosition();
+
+    const onWindowChange = () => updatePanelPosition();
+    window.addEventListener('resize', onWindowChange);
+    window.addEventListener('scroll', onWindowChange, true);
+    return () => {
+      window.removeEventListener('resize', onWindowChange);
+      window.removeEventListener('scroll', onWindowChange, true);
+    };
+  }, [open, updatePanelPosition]);
+
   const fetchSuggestions = useCallback(async (term) => {
-    if (!term.trim()) {
+    const normalizedTerm = normalizeSearchTerm(term);
+    if (!normalizedTerm) {
       setResults([]);
       setOpen(false);
       return;
     }
+
     setLoading(true);
     setOpen(true);
+
     try {
-      const data = await anilistRequest(SUGGEST_QUERY, { s: term }, {
+      const data = await anilistRequest(SUGGEST_QUERY, { s: normalizedTerm }, {
         cacheTtlMs: 45 * 1000,
-        key: `home:suggest:${term.trim().toLowerCase()}`,
+        key: `home:suggest:${normalizedTerm.toLowerCase()}`,
       });
+
       const media = (data?.Page?.media || []).filter((item) => item.id || item.idMal);
-      setResults(media);
-      setOpen(media.length > 0 || term.trim().length > 0);
-    } catch {
+
+      const uniqueMedia = Array.from(
+        new Map(media.map(item => [item.id || item.idMal, item])).values()
+      );
+
+      if (uniqueMedia.length > 0) {
+        setResults(uniqueMedia);
+        setOpen(true);
+        return;
+      }
+
+      const fallback = await searchJikanAnime(term, {
+        limit: 8,
+        key: `home:suggest:jikan:${term.trim().toLowerCase()}`,
+        cacheTtlMs: 45 * 1000,
+      });
+      const uniqueFallback = Array.from(
+        new Map((fallback.media || []).map(item => [item.id || item.idMal, item])).values()
+      );
+      setResults(uniqueFallback);
+      setOpen(uniqueFallback.length > 0 || term.trim().length > 0);
+
+    } catch (err) {
       try {
         const fallback = await searchJikanAnime(term, {
           limit: 8,
           key: `home:suggest:jikan:${term.trim().toLowerCase()}`,
           cacheTtlMs: 45 * 1000,
         });
-        setResults(fallback.media);
-        setOpen(fallback.media.length > 0 || term.trim().length > 0);
-      } catch {
+
+        const fbMedia = fallback.media || [];
+
+        const uniqueFallback = Array.from(
+          new Map(fbMedia.map(item => [item.id || item.idMal, item])).values()
+        );
+
+        setResults(uniqueFallback);
+        setOpen(uniqueFallback.length > 0 || term.trim().length > 0);
+
+      } catch (e) {
         setResults([]);
+        setOpen(false);
       }
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const handleChange = (event) => {
-    const value = event.target.value;
+  const handleChange = (e) => {
+    const value = e.target.value;
     setQuery(value);
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => fetchSuggestions(value), 420);
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    timerRef.current = setTimeout(() => {
+      fetchSuggestions(value);
+    }, 250);
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!query.trim()) return;
+
     setOpen(false);
     router.push(`/search?q=${encodeURIComponent(query.trim())}`);
   };
@@ -305,7 +378,7 @@ function SearchBar() {
   };
 
   return (
-    <div ref={wrapRef} className="relative mx-auto max-w-2xl">
+    <div ref={wrapRef} className="relative z-[220] mx-auto max-w-2xl">
       <SearchField
         value={query}
         onChange={handleChange}
@@ -315,66 +388,92 @@ function SearchBar() {
         placeholder="Search by title, genre, or season..."
       />
 
-      {open && (loading || results.length > 0) ? (
-        <div className="absolute left-0 right-0 top-full z-50 mt-3 max-h-[min(22rem,calc(100vh-8rem))] overflow-y-auto overflow-x-hidden rounded-[1.35rem] border border-white/8 bg-[rgba(8,10,14,0.96)] shadow-[0_24px_70px_rgba(0,0,0,0.4)] backdrop-blur-2xl sm:rounded-[1.6rem]">
-          {loading ? (
-            Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="border-b border-white/6 px-4 py-3 last:border-b-0">
-                <div className="flex items-center gap-3 sm:gap-4">
-                  <SkeletonBlock className="block h-14 w-10 shrink-0" borderRadius={12} />
-                  <div className="min-w-0 flex-1">
-                    <SkeletonBlock className="mb-2 block max-w-[12rem]" height={14} />
-                    <SkeletonBlock className="block max-w-[9rem]" height={10} />
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <>
-              {results.map((anime) => {
-                const title = mediaTitle(anime);
-                const score = anime.meanScore ? (anime.meanScore / 10).toFixed(1) : null;
-
-                return (
-                  <Link
-                    key={anime.id || anime.idMal}
-                    href={mediaHref(anime)}
-                    onClick={() => {
-                      setOpen(false);
-                      setQuery('');
-                    }}
-                    className="flex items-center gap-3 border-b border-white/6 px-4 py-3 last:border-b-0 hover:bg-white/5 sm:gap-4"
-                  >
-                    {anime.coverImage?.medium ? (
-                      <img src={anime.coverImage.medium} alt={title} className="h-14 w-10 rounded-xl object-cover" />
-                    ) : (
-                      <div className="flex h-14 w-10 items-center justify-center rounded-xl bg-[var(--color-ink)] text-[var(--color-muted)]">
-                        <UiIcons.tv size={18} />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-[var(--color-ivory)]">{title}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.68rem] uppercase tracking-[0.12em] text-[var(--color-muted)]">
-                        {score ? <span className="inline-flex items-center gap-1 text-[var(--color-brass)]"><UiIcons.star size={12} />{score}</span> : null}
-                        {anime.episodes ? <span>{anime.episodes} eps</span> : null}
-                        {anime.status ? <span>{anime.status === 'RELEASING' ? 'Airing' : anime.status}</span> : null}
+      {open && (loading || results.length > 0) && panelStyle
+        ? createPortal(
+            <div
+              ref={resultsRef}
+              className="fixed z-[999] max-h-[min(22rem,calc(100vh-8rem))] overflow-y-auto overflow-x-hidden rounded-[1.35rem] border border-white/8 bg-[rgba(8,10,14,0.96)] shadow-[0_24px_70px_rgba(0,0,0,0.4)] backdrop-blur-2xl sm:rounded-[1.6rem]"
+              style={panelStyle}
+            >
+              {loading ? (
+                Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="border-b border-white/6 px-4 py-3 last:border-b-0">
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <SkeletonBlock className="block h-14 w-10 shrink-0" borderRadius={12} />
+                      <div className="min-w-0 flex-1">
+                        <SkeletonBlock className="mb-2 block max-w-[12rem]" height={14} />
+                        <SkeletonBlock className="block max-w-[9rem]" height={10} />
                       </div>
                     </div>
-                    <UiIcons.arrowRight size={18} className="text-[var(--color-muted)]" />
-                  </Link>
-                );
-              })}
-            </>
-          )}
-          <button
-            onClick={handleSubmit}
-            className="flex w-full items-center justify-between px-4 py-3 text-sm text-[var(--color-mist)] hover:bg-white/5"
-          >
-            <span>See all results for “{query}”</span>
-            <UiIcons.arrowRight size={18} />
-          </button>
-        </div>
-      ) : null}
+                  </div>
+                ))
+              ) : (
+                <>
+                  {results.map((anime) => {
+                    const title = mediaTitle(anime);
+                    const score = anime.meanScore ? (anime.meanScore / 10).toFixed(1) : null;
+
+                    return (
+                      <Link
+                        key={anime.id || anime.idMal}
+                        href={mediaHref(anime)}
+                        onClick={() => {
+                          setOpen(false);
+                          setQuery('');
+                        }}
+                        className="flex items-center gap-3 border-b border-white/6 px-4 py-3 last:border-b-0 hover:bg-white/5 sm:gap-4"
+                      >
+                        {anime.coverImage?.medium ? (
+                          <img
+                            src={anime.coverImage.medium}
+                            alt={title}
+                            className="h-14 w-10 rounded-xl object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-14 w-10 items-center justify-center rounded-xl bg-[var(--color-ink)] text-[var(--color-muted)]">
+                            <UiIcons.tv size={18} />
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[var(--color-ivory)]">
+                            {title}
+                          </p>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.68rem] uppercase tracking-[0.12em] text-[var(--color-muted)]">
+                            {score && (
+                              <span className="inline-flex items-center gap-1 text-[var(--color-brass)]">
+                                <UiIcons.star size={12} />
+                                {score}
+                              </span>
+                            )}
+                            {anime.episodes && <span>{anime.episodes} eps</span>}
+                            {anime.status && (
+                              <span>
+                                {anime.status === 'RELEASING' ? 'Airing' : anime.status}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <UiIcons.arrowRight size={18} className="text-[var(--color-muted)]" />
+                      </Link>
+                    );
+                  })}
+                </>
+              )}
+
+              <button
+                onClick={handleSubmit}
+                className="flex w-full items-center justify-between px-4 py-3 text-sm text-[var(--color-mist)] hover:bg-white/5"
+              >
+                <span>See all results for “{query}”</span>
+                <UiIcons.arrowRight size={18} />
+              </button>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
