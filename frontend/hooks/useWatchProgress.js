@@ -19,7 +19,7 @@ function setStoredProgress(data) {
 }
 
 export function useWatchProgress() {
-  const progressRef = useRef({});
+  const progressRef = useRef(getStoredProgress());
 
   useEffect(() => {
     progressRef.current = getStoredProgress();
@@ -36,7 +36,9 @@ export function useWatchProgress() {
   }, []);
 
   const getProgress = useCallback((animeId) => {
-    return progressRef.current[animeId] || null;
+    const latest = getStoredProgress();
+    progressRef.current = latest;
+    return latest[animeId] || null;
   }, []);
 
   const clearProgress = useCallback((animeId) => {
