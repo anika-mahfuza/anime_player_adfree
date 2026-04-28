@@ -29,6 +29,8 @@ function normalizeStatus(status, airing = false) {
   if (airing || status === 'Currently Airing') return 'RELEASING';
 
   return {
+    AIRING: 'RELEASING',
+    CURRENTLY_AIRING: 'RELEASING',
     'Finished Airing': 'FINISHED',
     'Not yet aired': 'NOT_YET_RELEASED',
     'Not Yet Aired': 'NOT_YET_RELEASED',
@@ -173,8 +175,6 @@ export async function searchJikanAnime(term, { limit = 24, page = 1, key, cacheT
     q: cleanTerm,
     page,
     limit,
-    order_by: 'popularity',
-    sort: 'desc',
     sfw: 'true',
   }, {
     key: key || `jikan-search:${term.trim().toLowerCase()}:${page}:${limit}`,

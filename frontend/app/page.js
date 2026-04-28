@@ -33,9 +33,11 @@ import { ContinueRowSkeleton, HomePageSkeleton, ShelfSkeleton, SkeletonBlock } f
 import { useLazyMount } from '@/hooks/useLazyMount';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
 import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
+import { hydrateMediaWithAniZipEpisodeCounts } from '@/lib/anizip';
 import { jikanRequest, normalizeJikanAnime, searchJikanAnime } from '@/lib/jikan';
 import { mediaTitle } from '@/lib/media';
 import { animeHref, watchHref } from '@/lib/routes';
+import { mediaIdentity, mergeAndRankMedia, parseUserSearchQuery } from '@/lib/search.mjs';
 
 const CRITICAL_CACHE_KEY = 'home_critical_v2';
 const SECONDARY_CACHE_KEY = 'home_secondary_v2';
@@ -161,12 +163,6 @@ query ($s: String) {
   }
 }`;
 
-function normalizeSearchTerm(term) {
-  const text = String(term || '').trim();
-  if (!text) return '';
-  return text.replace(/\(.*?\bmal\D*\d{1,7}\b.*?\)/gi, '').trim() || text;
-}
-
 const JIKAN_SECONDARY_KEYS = ['popular', 'topRated', 'upcoming', 'movies', 'action', 'romance', 'fantasy', 'comedy'];
 
 function mediaHref(media) {
@@ -174,15 +170,6 @@ function mediaHref(media) {
   if (media?.idMal) return animeHref(media.idMal);
   const title = mediaTitle(media);
   return title ? `/search?q=${encodeURIComponent(title)}` : '/';
-}
-
-function mediaIdentity(media, index = 0) {
-  if (media?.id != null) return `id-${media.id}`;
-  if (media?.idMal != null) return `mal-${media.idMal}`;
-
-  const normalizedTitle = mediaTitle(media).trim().toLowerCase();
-  if (normalizedTitle) return `title-${normalizedTitle}`;
-  return `idx-${index}`;
 }
 
 function getJikanSecondaryPayload(source) {
@@ -251,6 +238,7 @@ function SearchBar() {
   const timerRef = useRef(null);
   const wrapRef = useRef(null);
   const resultsRef = useRef(null);
+  const suggestRunRef = useRef(0);
   const router = useRouter();
 
   const updatePanelPosition = useCallback(() => {
@@ -287,8 +275,10 @@ function SearchBar() {
   }, [open, updatePanelPosition]);
 
   const fetchSuggestions = useCallback(async (term) => {
-    const normalizedTerm = normalizeSearchTerm(term);
-    if (!normalizedTerm) {
+    const runId = suggestRunRef.current + 1;
+    suggestRunRef.current = runId;
+    const queryInfo = parseUserSearchQuery(term);
+    if (!queryInfo.normalized) {
       setResults([]);
       setOpen(false);
       return;
@@ -298,50 +288,55 @@ function SearchBar() {
     setOpen(true);
 
     try {
-      const data = await anilistRequest(SUGGEST_QUERY, { s: normalizedTerm }, {
+      const data = await anilistRequest(SUGGEST_QUERY, { s: queryInfo.canonical }, {
         cacheTtlMs: 45 * 1000,
-        key: `home:suggest:${normalizedTerm.toLowerCase()}`,
+        key: `home:suggest:${queryInfo.normalized}`,
       });
 
       const media = (data?.Page?.media || []).filter((item) => item.id || item.idMal);
-
-      const uniqueMedia = Array.from(
-        new Map(media.map(item => [item.id || item.idMal, item])).values()
-      );
-
-      if (uniqueMedia.length > 0) {
-        setResults(uniqueMedia);
-        setOpen(true);
-        return;
-      }
+      const uniqueMedia = Array.from(new Map(media.map((item, index) => [mediaIdentity(item, index), item])).values());
 
       const fallback = await searchJikanAnime(term, {
         limit: 8,
-        key: `home:suggest:jikan:${term.trim().toLowerCase()}`,
+        key: `home:suggest:jikan:${queryInfo.normalized}`,
         cacheTtlMs: 45 * 1000,
       });
-      const uniqueFallback = Array.from(
-        new Map((fallback.media || []).map(item => [item.id || item.idMal, item])).values()
-      );
-      setResults(uniqueFallback);
-      setOpen(uniqueFallback.length > 0 || term.trim().length > 0);
+      const merged = mergeAndRankMedia(queryInfo, uniqueMedia, fallback.media || []);
+      if (suggestRunRef.current !== runId) return;
+      setResults(merged.results.slice(0, 8));
+      setOpen(merged.results.length > 0 || term.trim().length > 0);
+      hydrateMediaWithAniZipEpisodeCounts(merged.results.slice(0, 8), {
+        limit: 8,
+        keyPrefix: `home:suggest:episodes:${queryInfo.normalized}`,
+      }).then((hydrated) => {
+        if (suggestRunRef.current !== runId) return;
+        setResults(hydrated);
+      }).catch(() => {});
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[home-search] suggestions debug', merged.debug);
+      }
 
     } catch (err) {
       try {
         const fallback = await searchJikanAnime(term, {
           limit: 8,
-          key: `home:suggest:jikan:${term.trim().toLowerCase()}`,
+          key: `home:suggest:jikan:${queryInfo.normalized}`,
           cacheTtlMs: 45 * 1000,
         });
-
-        const fbMedia = fallback.media || [];
-
-        const uniqueFallback = Array.from(
-          new Map(fbMedia.map(item => [item.id || item.idMal, item])).values()
-        );
-
-        setResults(uniqueFallback);
-        setOpen(uniqueFallback.length > 0 || term.trim().length > 0);
+        const merged = mergeAndRankMedia(queryInfo, [], fallback.media || []);
+        if (suggestRunRef.current !== runId) return;
+        setResults(merged.results.slice(0, 8));
+        setOpen(merged.results.length > 0 || term.trim().length > 0);
+        hydrateMediaWithAniZipEpisodeCounts(merged.results.slice(0, 8), {
+          limit: 8,
+          keyPrefix: `home:suggest:episodes:fallback:${queryInfo.normalized}`,
+        }).then((hydrated) => {
+          if (suggestRunRef.current !== runId) return;
+          setResults(hydrated);
+        }).catch(() => {});
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('[home-search] fallback-only debug', merged.debug);
+        }
 
       } catch (e) {
         setResults([]);

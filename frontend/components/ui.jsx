@@ -170,6 +170,7 @@ export function MediaCard({ anime, href, compact = false, priority = false, clas
       ? `${anime.episodes} eps`
       : null;
   const format = anime?.format ? anime.format.replace(/_/g, ' ') : null;
+  const isAiringStatus = ['RELEASING', 'AIRING', 'CURRENTLY_AIRING'].includes(String(anime?.status || '').toUpperCase());
   const destination = href || animeHref(anime?.id);
 
   return (
@@ -198,7 +199,7 @@ export function MediaCard({ anime, href, compact = false, priority = false, clas
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-2.5 sm:p-3">
           <div className="flex gap-2">
             {format ? <TagChip>{format}</TagChip> : null}
-            {anime?.status === 'RELEASING' ? <StatusBadge status={anime.status} /> : null}
+            {isAiringStatus ? <StatusBadge status="RELEASING" /> : null}
           </div>
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/12 bg-[rgba(8,10,14,0.56)] text-[var(--color-ivory)] transition duration-300 group-hover:bg-[rgba(139,40,61,0.92)] sm:h-11 sm:w-11">
             <RiPlayMiniFill size={18} className="translate-x-[1px] sm:text-[20px]" />

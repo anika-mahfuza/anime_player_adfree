@@ -63,3 +63,43 @@ export async function fetchAniZipEpisodes(ids, { cacheTtlMs = 2 * 60 * 1000, key
 
   return normalizeAniZipEpisodes(payload);
 }
+
+export async function hydrateMediaWithAniZipEpisodeCounts(mediaList, { limit = 12, cacheTtlMs = 2 * 60 * 1000, keyPrefix = 'anizip-hydrate' } = {}) {
+  if (!Array.isArray(mediaList) || mediaList.length === 0) return mediaList || [];
+
+  const normalizedLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 12;
+  const next = mediaList.map((item) => ({ ...item }));
+
+  const missingEpisodeTargets = next
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => !item?.episodes && (item?.idMal || item?.id))
+    .slice(0, normalizedLimit);
+
+  if (missingEpisodeTargets.length === 0) return next;
+
+  const lookups = await Promise.allSettled(
+    missingEpisodeTargets.map(async ({ item, index }) => {
+      const episodes = await fetchAniZipEpisodes(
+        { malId: item.idMal, anilistId: item.id },
+        {
+          cacheTtlMs,
+          key: `${keyPrefix}:${item.idMal || 'x'}:${item.id || 'x'}`,
+        }
+      );
+
+      return {
+        index,
+        episodeCount: episodes.length || null,
+      };
+    })
+  );
+
+  lookups.forEach((result) => {
+    if (result.status !== 'fulfilled') return;
+    const { index, episodeCount } = result.value;
+    if (!episodeCount) return;
+    next[index] = { ...next[index], episodes: episodeCount };
+  });
+
+  return next;
+}
