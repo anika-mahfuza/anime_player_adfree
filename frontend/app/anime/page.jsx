@@ -90,9 +90,9 @@ function SequenceCard({ anime, isCurrent = false, index = 0 }) {
       className={`surface-panel flex items-center gap-4 p-4 ${isCurrent ? '!border-2 !border-[var(--color-brass)] shadow-[0_0_0_1px_rgba(196,160,96,0.2)]' : ''}`}
     >
       {anime.coverImage?.large ? (
-        <img src={anime.coverImage.large} alt={title} className="h-20 w-14 rounded-[1rem] object-cover" loading="lazy" />
+        <img src={anime.coverImage.large} alt={title} className="h-20 w-14 rounded-lg object-cover" loading="lazy" />
       ) : (
-        <div className="flex h-20 w-14 items-center justify-center rounded-[1rem] bg-[var(--color-ink)] text-[var(--color-muted)]">
+        <div className="flex h-20 w-14 items-center justify-center rounded-lg bg-[var(--color-ink)] text-[var(--color-muted)]">
           <RiTv2Line size={22} />
         </div>
       )}
@@ -228,7 +228,7 @@ function AnimeDetailsInner() {
                 <img
                   src={anime.coverImage.extraLarge}
                   alt={title}
-                  className="aspect-[2/3] w-full rounded-[1.5rem] border border-white/10 object-cover shadow-[0_30px_90px_rgba(0,0,0,0.45)] sm:rounded-[2rem]"
+                  className="aspect-[2/3] w-full rounded-xl border border-white/10 object-cover shadow-[0_8px_32px_rgba(0,0,0,0.38)]"
                 />
               ) : null}
             </div>
@@ -277,35 +277,27 @@ function AnimeDetailsInner() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-screen-xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
+      <section className="mx-auto max-w-screen-xl space-y-10 px-4 py-8 sm:px-6">
         {watchSequence.length > 1 ? (
-          <SurfacePanel className="p-5 sm:p-6">
-            <SectionHeading
-              eyebrow="Watch Order"
-              title="Seasons and related entries"
-              subtitle="Main seasons, OVAs, side stories, and sequels in one polished watch-order panel."
-            />
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div>
+            <SectionHeading eyebrow="Watch Order" title="Seasons & related entries" />
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {watchSequence.map((item, index) => (
                 <SequenceCard key={item.id} anime={item} isCurrent={item.id === anime.id} index={index} />
               ))}
             </div>
-          </SurfacePanel>
+          </div>
         ) : null}
 
         {recommendations.length ? (
-          <SurfacePanel className="p-5 sm:p-6">
-            <SectionHeading
-              eyebrow="Recommended"
-              title="You may also want to watch"
-              subtitle="High-signal recommendations pulled from AniList relations and audience overlap."
-            />
-            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div>
+            <SectionHeading eyebrow="Recommended" title="You may also want to watch" />
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {recommendations.map((item) => (
                 <MediaCard key={item.id} anime={item} />
               ))}
             </div>
-          </SurfacePanel>
+          </div>
         ) : null}
       </section>
     </main>

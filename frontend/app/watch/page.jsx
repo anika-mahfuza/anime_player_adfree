@@ -111,7 +111,7 @@ function EpisodeButton({ episode, active, loading, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-[1.15rem] border px-4 py-3 text-left transition ${active
+      className={`w-full rounded-lg border px-3 py-2.5 text-left transition ${active
           ? 'border-[rgba(183,82,106,0.4)] bg-[rgba(139,40,61,0.16)] text-[var(--color-ivory)]'
           : 'border-white/8 bg-white/5 text-[var(--color-mist)] hover:bg-white/8'
         }`}
@@ -140,9 +140,9 @@ function SeasonCard({ season, isCurrent }) {
       className={`surface-panel flex items-center gap-3 p-3 ${isCurrent ? '!border-2 !border-[var(--color-brass)] shadow-[0_0_0_1px_rgba(196,160,96,0.2)]' : ''}`}
     >
       {season.coverImage?.large ? (
-        <img src={season.coverImage.large} alt={title} className="h-16 w-12 rounded-[0.95rem] object-cover" loading="lazy" />
+        <img src={season.coverImage.large} alt={title} className="h-16 w-12 rounded-lg object-cover" loading="lazy" />
       ) : (
-        <div className="flex h-16 w-12 items-center justify-center rounded-[0.95rem] bg-[var(--color-ink)] text-[var(--color-muted)]">
+        <div className="flex h-16 w-12 items-center justify-center rounded-lg bg-[var(--color-ink)] text-[var(--color-muted)]">
           <RiTv2Line size={18} />
         </div>
       )}
@@ -416,8 +416,8 @@ function WatchPageContent() {
       </TopNav>
 
       {savedProgress?.episode > 1 ? (
-        <section className="mx-auto max-w-screen-xl px-4 pt-5 sm:px-6">
-          <SurfacePanel className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+        <section className="mx-auto max-w-screen-xl px-4 pt-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[rgba(196,160,96,0.2)] bg-[rgba(196,160,96,0.06)] px-4 py-3">
             <div className="flex items-center gap-2 text-sm text-[var(--color-mist)]">
               <RiHistoryLine size={16} className="text-[var(--color-brass)]" />
               Continue from episode {savedProgress.episode}
@@ -425,21 +425,21 @@ function WatchPageContent() {
             <button onClick={() => setActiveEpisode(savedProgress.episode)} className="button-primary">
               Resume
             </button>
-          </SurfacePanel>
+          </div>
         </section>
       ) : null}
 
       <section className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="grid gap-5 lg:gap-6 xl:grid-cols-[minmax(0,1.45fr)_24rem]">
-          <div className="space-y-6">
-            <SurfacePanel className="overflow-hidden p-3 sm:p-5">
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-xl border border-white/6">
               {anime.bannerImage ? (
-                <div className="mb-4 h-24 overflow-hidden rounded-[1.1rem] border border-white/8 sm:h-36 sm:rounded-[1.35rem]">
+                <div className="h-20 overflow-hidden border-b border-white/6 sm:h-28">
                   <img src={anime.bannerImage} alt="" className="h-full w-full object-cover" />
                 </div>
               ) : null}
 
-              <div className="relative overflow-hidden rounded-[1.1rem] bg-black sm:rounded-[1.5rem]">
+              <div className="relative overflow-hidden bg-black">
                 {streamError ? (
                   <div className="flex aspect-video flex-col items-center justify-center gap-3 bg-[var(--color-ink)] px-4 text-center text-[var(--color-muted)]">
                     <RiAlertLine size={28} className="text-[var(--color-brass)]" />
@@ -512,15 +512,15 @@ function WatchPageContent() {
                   </button>
                 </div>
               ) : null}
-            </SurfacePanel>
+            </div>
 
-            <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-              <div className="grid gap-5 sm:grid-cols-[8rem_minmax(0,1fr)]">
+            <div className="rounded-xl border border-white/6 p-4 sm:p-5">
+              <div className="grid gap-4 sm:grid-cols-[7rem_minmax(0,1fr)]">
                 {anime.coverImage?.extraLarge ? (
                   <img
                     src={anime.coverImage.extraLarge}
                     alt={title}
-                    className="mx-auto h-48 w-32 rounded-[1.25rem] border border-white/8 object-cover sm:mx-0 sm:rounded-[1.4rem]"
+                    className="mx-auto h-40 w-28 rounded-lg border border-white/8 object-cover sm:mx-0"
                   />
                 ) : null}
 
@@ -567,13 +567,12 @@ function WatchPageContent() {
                   ) : null}
                 </div>
               </div>
-            </SurfacePanel>
+            </div>
           </div>
 
-          <div className="space-y-6">
-            <SurfacePanel className="overflow-hidden p-5">
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-xl border border-white/6 p-4">
               <SectionHeading
-                eyebrow="Episode Rail"
                 title="Episodes"
                 subtitle={`Episode ${activeEpisode} selected${episodes.length > 0 ? ` - ${episodes.length} total` : ''}`}
               />
@@ -595,21 +594,17 @@ function WatchPageContent() {
                   </div>
                 ))}
               </div>
-            </SurfacePanel>
+            </div>
 
             {watchSequence.length > 1 ? (
-              <SurfacePanel className="overflow-hidden p-5">
-                <SectionHeading
-                  eyebrow="Watch Order"
-                  title="Seasons"
-                  subtitle="Main seasons, OVAs, side stories, and related titles."
-                />
-                <div className="mt-5 space-y-3">
+              <div className="overflow-hidden rounded-xl border border-white/6 p-4">
+                <SectionHeading title="Seasons" />
+                <div className="mt-3 space-y-2">
                   {watchSequence.map((item) => (
                     <SeasonCard key={item.id} season={item} isCurrent={item.id === anime.id} />
                   ))}
                 </div>
-              </SurfacePanel>
+              </div>
             ) : null}
           </div>
         </div>

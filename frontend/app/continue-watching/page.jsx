@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { RiArrowLeftSLine, RiLoader4Line, RiPlayMiniFill, RiTimeLine, RiTv2Line } from '@remixicon/react';
-import { ContinueBadge, EmptyState, SectionHeading, SurfacePanel, TopNav } from '@/components/ui';
+import { ContinueBadge, EmptyState, TopNav } from '@/components/ui';
 import { ContinueWatchingSkeleton } from '@/components/skeletons';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
 import { watchHref } from '@/lib/routes';
@@ -47,14 +47,12 @@ function ContinueGridCard({ item }) {
           </div>
         </div>
       </div>
-      <div className="flex flex-1 flex-col gap-2.5 p-3.5 sm:gap-3 sm:p-4">
-        <div>
-          <h2 className="line-clamp-2 text-[0.95rem] font-medium leading-6 text-[var(--color-ivory)] sm:text-base">{item.title}</h2>
-          <p className="mt-2 flex items-center gap-2 text-sm text-[var(--color-muted)]">
-            <RiTimeLine size={15} />
-            Continue from episode {item.episode}
-          </p>
-        </div>
+      <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+        <h2 className="line-clamp-2 text-[0.82rem] font-medium leading-5 text-[var(--color-ivory)]">{item.title}</h2>
+        <p className="flex items-center gap-1.5 text-[0.72rem] text-[var(--color-muted)]">
+          <RiTimeLine size={13} />
+          Ep {item.episode}
+        </p>
       </div>
     </Link>
   );
@@ -84,20 +82,14 @@ export default function ContinueWatchingPage() {
         </div>
       </TopNav>
 
-      <section className="mx-auto max-w-screen-xl px-4 py-8 sm:px-6 sm:py-10">
-        <SurfacePanel className="mb-8 overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
-          <SectionHeading
-            eyebrow="Personal Queue"
-            title="Pick up right where you left off."
-            subtitle="Your saved progress lives locally, so your recent episodes, resumed titles, and unfinished seasons stay one tap away."
-            action={
-              <Link href="/" className="button-secondary">
-                <RiArrowLeftSLine size={18} />
-                Back Home
-              </Link>
-            }
-          />
-        </SurfacePanel>
+      <section className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6">
+        <div className="mb-6 flex items-center justify-between border-b border-white/6 pb-4">
+          <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">Personal Queue</p>
+          <Link href="/" className="button-ghost">
+            <RiArrowLeftSLine size={16} />
+            Back Home
+          </Link>
+        </div>
         {!loading && items.length === 0 ? (
           <EmptyState
             icon={RiTv2Line}

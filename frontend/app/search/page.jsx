@@ -3,8 +3,8 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { RiSearchEyeLine, RiSparkling2Fill } from '@remixicon/react';
-import { EmptyState, MediaCard, SearchField, SectionHeading, SurfacePanel, TopNav } from '@/components/ui';
+import { RiSearchEyeLine } from '@remixicon/react';
+import { EmptyState, MediaCard, SearchField, TopNav } from '@/components/ui';
 import { MediaGridSkeleton, SearchPageSkeleton } from '@/components/skeletons';
 import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
 
@@ -106,29 +106,22 @@ function SearchInner() {
         />
       </TopNav>
 
-      <section className="mx-auto max-w-screen-xl px-4 py-8 sm:px-6 sm:py-10">
-        <SurfacePanel className="mb-8 overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
-          <SectionHeading
-            eyebrow="Search Archive"
-            title={query ? `Results for “${query}”` : 'Search the catalogue'}
-            subtitle={
-              query
-                ? `${total > 0 ? `${total}+ matches loaded` : 'No matches yet'} from the current AniList search feed.`
-                : 'Type a title to explore polished anime cards, details pages, and the full watch flow.'
-            }
-            action={
-              <div className="hidden items-center gap-2 text-sm text-[var(--color-muted)] md:flex">
-                <RiSparkling2Fill size={16} className="text-[var(--color-brass)]" />
-                Premium discovery mode
-              </div>
-            }
-          />
-        </SurfacePanel>
+      <section className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6">
+        <div className="mb-6 flex items-center justify-between border-b border-white/6 pb-4">
+          <div>
+            <h1 className="font-[family:var(--font-display)] text-lg text-[var(--color-ivory)] sm:text-xl">
+              {query ? `Results for "${query}"` : 'Search the catalogue'}
+            </h1>
+            {query && total > 0 ? (
+              <p className="mt-0.5 text-xs text-[var(--color-muted)]">{total}+ titles found</p>
+            ) : null}
+          </div>
+        </div>
 
         {loading ? (
           <MediaGridSkeleton />
         ) : results.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {results.map((anime) => (
               <MediaCard key={anime.id} anime={anime} />
             ))}
