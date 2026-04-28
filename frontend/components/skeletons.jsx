@@ -34,9 +34,9 @@ function PlaceholderSectionHeading() {
   );
 }
 
-function MediaCardSkeleton() {
+function MediaCardSkeleton({ className = '' }) {
   return (
-    <div className="media-card overflow-hidden">
+    <div className={`media-card overflow-hidden ${className}`.trim()}>
       <div className="media-card-art">
         <Skeleton className="h-full w-full" />
       </div>
@@ -52,9 +52,9 @@ function MediaCardSkeleton() {
   );
 }
 
-function ContinueCardSkeleton() {
+function ContinueCardSkeleton({ className = '' }) {
   return (
-    <div className="media-card overflow-hidden">
+    <div className={`media-card overflow-hidden ${className}`.trim()}>
       <div className="media-card-art">
         <Skeleton className="h-full w-full" />
       </div>
@@ -69,20 +69,16 @@ function ContinueCardSkeleton() {
 export function ShelfSkeleton({ title, subtitle, cardCount = 5 }) {
   return (
     <section className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6">
-      <PlaceholderPanel>
-        <div className="mb-6">
-          {title ? <p className="mb-3 text-[0.7rem] uppercase tracking-[0.24em] text-[var(--color-brass)]">{title}</p> : null}
-          <SkeletonBlock className="mb-3 block max-w-[18rem]" height={34} />
-          {subtitle ? <p className="text-sm text-[var(--color-muted)]">{subtitle}</p> : <SkeletonBlock className="block max-w-[28rem]" height={14} />}
-        </div>
-        <div className="flex gap-3 overflow-hidden sm:gap-4">
-          {Array.from({ length: cardCount }).map((_, index) => (
-            <div key={index} className="rail-card">
-              <MediaCardSkeleton />
-            </div>
-          ))}
-        </div>
-      </PlaceholderPanel>
+      <div className="mb-6">
+        {title ? <p className="mb-3 text-[0.7rem] uppercase tracking-[0.24em] text-[var(--color-brass)]">{title}</p> : null}
+        <SkeletonBlock className="mb-3 block max-w-[18rem]" height={34} />
+        {subtitle ? <p className="text-sm text-[var(--color-muted)]">{subtitle}</p> : <SkeletonBlock className="block max-w-[28rem]" height={14} />}
+      </div>
+      <div className="flex gap-3 overflow-hidden sm:gap-4">
+        {Array.from({ length: cardCount }).map((_, index) => (
+          <MediaCardSkeleton key={index} className="rail-card" />
+        ))}
+      </div>
     </section>
   );
 }
@@ -102,16 +98,12 @@ export function MediaGridSkeleton({ count = 8, className = '', cardWrapperClassN
 export function ContinueRowSkeleton({ count = 6 }) {
   return (
     <section className="mx-auto max-w-screen-xl px-4 pt-6 sm:px-6">
-      <PlaceholderPanel className="overflow-hidden p-5 sm:p-6">
-        <PlaceholderSectionHeading />
-        <div className="mt-6 flex gap-3 overflow-hidden sm:gap-4">
-          {Array.from({ length: count }).map((_, index) => (
-            <div key={index} className="rail-card">
-              <ContinueCardSkeleton />
-            </div>
-          ))}
-        </div>
-      </PlaceholderPanel>
+      <PlaceholderSectionHeading />
+      <div className="mt-6 flex gap-3 overflow-hidden sm:gap-4">
+        {Array.from({ length: count }).map((_, index) => (
+          <ContinueCardSkeleton key={index} className="rail-card" />
+        ))}
+      </div>
     </section>
   );
 }
@@ -159,30 +151,22 @@ export function HomePageSkeleton() {
       </section>
 
       <section className="mx-auto max-w-screen-xl px-4 pt-6 sm:px-6">
-        <PlaceholderPanel>
-          <PlaceholderSectionHeading />
-          <div className="flex gap-3 overflow-hidden sm:gap-4">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="rail-card">
-                <ContinueCardSkeleton />
-              </div>
-            ))}
-          </div>
-        </PlaceholderPanel>
+        <PlaceholderSectionHeading />
+        <div className="flex gap-3 overflow-hidden sm:gap-4">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <ContinueCardSkeleton key={index} className="rail-card" />
+          ))}
+        </div>
       </section>
 
       {Array.from({ length: 2 }).map((_, sectionIndex) => (
         <section key={sectionIndex} className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6">
-          <PlaceholderPanel>
-            <PlaceholderSectionHeading />
-            <div className="flex gap-3 overflow-hidden sm:gap-4">
-              {Array.from({ length: 5 }).map((_, cardIndex) => (
-                <div key={cardIndex} className="rail-card">
-                  <MediaCardSkeleton />
-                </div>
-              ))}
-            </div>
-          </PlaceholderPanel>
+          <PlaceholderSectionHeading />
+          <div className="flex gap-3 overflow-hidden sm:gap-4">
+            {Array.from({ length: 5 }).map((_, cardIndex) => (
+              <MediaCardSkeleton key={cardIndex} className="rail-card" />
+            ))}
+          </div>
         </section>
       ))}
     </main>
@@ -267,9 +251,9 @@ export function ContinueWatchingSkeleton() {
         </div>
       </TopNav>
       <section className="mx-auto max-w-screen-xl px-4 py-8 sm:px-6 sm:py-10">
-        <PlaceholderPanel className="mb-8 px-4 py-5 sm:px-8 sm:py-8">
+        <div className="mb-8">
           <PlaceholderSectionHeading />
-        </PlaceholderPanel>
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, index) => (
             <ContinueCardSkeleton key={index} />

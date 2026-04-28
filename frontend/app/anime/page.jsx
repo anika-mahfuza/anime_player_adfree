@@ -18,6 +18,7 @@ import { MediaCard, MetaPill, QuickActionLink, SectionHeading, StatusBadge, Surf
 import { AnimeDetailsSkeleton } from '@/components/skeletons';
 import { getWatchSequence, useWatchProgress } from '@/hooks/useWatchProgress';
 import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
+import { fetchJikanAnimeDetails } from '@/lib/jikan';
 import { formatRelationType, formatSeason, mediaTitle, stripHtml } from '@/lib/media';
 import { animeHref, watchHref } from '@/lib/routes';
 
@@ -138,9 +139,17 @@ function AnimeDetailsInner() {
         if (!data?.Media) throw new Error('Anime not found');
         setAnime(data.Media);
       })
-      .catch((nextError) => {
-        if (cancelled) return;
-        setError(nextError.message || 'Failed to load anime details');
+      .catch(async (nextError) => {
+        try {
+          const fallback = await fetchJikanAnimeDetails(Number.parseInt(id, 10), {
+            keyPrefix: `anime-details:jikan:${id}`,
+          });
+          if (cancelled) return;
+          setAnime(fallback);
+        } catch {
+          if (cancelled) return;
+          setError(nextError.message || 'Failed to load anime details');
+        }
       })
       .finally(async () => {
         await ensureMinimumDelay(startedAt);

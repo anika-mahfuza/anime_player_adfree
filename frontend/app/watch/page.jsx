@@ -23,7 +23,9 @@ import { WatchPageSkeleton } from '@/components/skeletons';
 import { MetaPill, SectionHeading, StatusBadge, SurfacePanel, TagChip, TopNav } from '@/components/ui';
 import { getWatchSequence, useWatchProgress } from '@/hooks/useWatchProgress';
 import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
+import { fetchAniZipEpisodes } from '@/lib/anizip';
 import { apiUrl } from '@/lib/apiBase';
+import { fetchJikanAnimeDetails, jikanRequest } from '@/lib/jikan';
 import { formatRelationType, formatSeason, mediaTitle, stripHtml } from '@/lib/media';
 import { pacedJsonFetch } from '@/lib/requestScheduler';
 import { animeHref } from '@/lib/routes';
@@ -57,7 +59,7 @@ const ANIME_QUERY = `
 
 async function fetchEpisodes(malId) {
   const baseKey = `episodes:${malId}`;
-  const first = await pacedJsonFetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=1`, undefined, {
+  const first = await jikanRequest(`/anime/${malId}/episodes`, { page: 1 }, {
     key: `${baseKey}:1`,
     cacheTtlMs: 10 * 60 * 1000,
   });
@@ -69,7 +71,7 @@ async function fetchEpisodes(malId) {
 
   const pages = [first.data];
   for (let page = 2; page <= last; page += 1) {
-    const payload = await pacedJsonFetch(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=${page}`, undefined, {
+    const payload = await jikanRequest(`/anime/${malId}/episodes`, { page }, {
       key: `${baseKey}:${page}`,
       cacheTtlMs: 10 * 60 * 1000,
     });
@@ -77,6 +79,115 @@ async function fetchEpisodes(malId) {
   }
 
   return pages.flat();
+}
+
+function buildFallbackEpisodes(count) {
+  return Array.from(
+    { length: Math.max(1, count) },
+    (_, index) => ({
+      mal_id: index + 1,
+      number: index + 1,
+      title: null,
+      filler: false,
+    }),
+  );
+}
+
+function mergeEpisodesWithFallback(episodeData, minimumCount) {
+  const normalized = Array.isArray(episodeData) ? episodeData.filter(Boolean) : [];
+  const mapped = new Map(
+    normalized
+      .map((episode) => {
+        const number = Number.parseInt(String(episode?.mal_id ?? episode?.number), 10);
+        if (!Number.isFinite(number) || number <= 0) return null;
+
+        return [
+          number,
+          {
+            ...episode,
+            mal_id: number,
+            number,
+            filler: Boolean(episode?.filler),
+          },
+        ];
+      })
+      .filter(Boolean),
+  );
+
+  const highestEpisode = Math.max(
+    minimumCount,
+    ...Array.from(mapped.keys()),
+    1,
+  );
+
+  return Array.from({ length: highestEpisode }, (_, index) => {
+    const number = index + 1;
+    return mapped.get(number) || {
+      mal_id: number,
+      number,
+      title: null,
+      filler: false,
+    };
+  });
+}
+
+function isReleasedEpisode(episode) {
+  const airDate = episode?.airDate ? Date.parse(episode.airDate) : Number.NaN;
+  return Number.isFinite(airDate) ? airDate <= Date.now() : false;
+}
+
+function limitEpisodesForMedia(episodeData, media) {
+  const normalized = Array.isArray(episodeData) ? episodeData.filter(Boolean) : [];
+  if (!normalized.length) return normalized;
+  if (media?.status !== 'RELEASING') return normalized;
+
+  const highestReleasedFromDates = normalized.reduce(
+    (highest, episode) => (isReleasedEpisode(episode) ? Math.max(highest, episode.mal_id) : highest),
+    0,
+  );
+  const highestReleasedFromAniList = Number(media?.nextAiringEpisode?.episode) > 1
+    ? Number(media.nextAiringEpisode.episode) - 1
+    : 0;
+  const highestReleased = Math.max(highestReleasedFromDates, highestReleasedFromAniList);
+
+  if (highestReleased <= 0) return [];
+  return normalized.filter((episode) => episode.mal_id <= highestReleased);
+}
+
+function getInitialEpisodeLimit(media) {
+  if (media?.status === 'RELEASING' && Number(media?.nextAiringEpisode?.episode) > 1) {
+    return Math.max(1, Number(media.nextAiringEpisode.episode) - 1);
+  }
+
+  return Math.max(1, Number(media?.episodes) || 1);
+}
+
+async function fetchPreferredEpisodes({ anilistId, malId, fallbackCount, media }) {
+  try {
+    const aniZipEpisodes = await fetchAniZipEpisodes({ malId, anilistId }, {
+      key: `watch-episodes:anizip:${malId || 'x'}:${anilistId || 'x'}`,
+      cacheTtlMs: 2 * 60 * 1000,
+    });
+
+    if (aniZipEpisodes.length) {
+      return limitEpisodesForMedia(mergeEpisodesWithFallback(aniZipEpisodes, fallbackCount), media);
+    }
+  } catch (error) {
+    console.warn('[Watch] AniZip episode fetch failed, trying Jikan:', error.message);
+  }
+
+  if (malId) {
+    try {
+      const jikanEpisodes = await fetchEpisodes(malId);
+      if (jikanEpisodes.length) {
+        return limitEpisodesForMedia(mergeEpisodesWithFallback(jikanEpisodes, fallbackCount), media);
+      }
+    } catch (error) {
+      console.warn('[Watch] Jikan episode fetch failed, using fallback episode list:', error.message);
+    }
+  }
+
+  return limitEpisodesForMedia(buildFallbackEpisodes(fallbackCount), media);
 }
 
 async function fetchStreamUrl({
@@ -105,6 +216,26 @@ async function fetchStreamUrl({
   });
   if (payload.error) throw new Error(payload.error ?? 'Stream fetch failed');
   return payload.streamUrl;
+}
+
+async function fetchSkipTimes(malId, episode, language = 'sub') {
+  const normalizedMalId = Number.parseInt(String(malId || ''), 10);
+  const normalizedEpisode = Number.parseInt(String(episode || ''), 10);
+  if (!Number.isFinite(normalizedMalId) || normalizedMalId <= 0) return null;
+  if (!Number.isFinite(normalizedEpisode) || normalizedEpisode <= 0) return null;
+
+  const query = new URLSearchParams({
+    malId: String(normalizedMalId),
+    episode: String(normalizedEpisode),
+    lang: language === 'dub' ? 'dub' : 'sub',
+  });
+
+  const payload = await pacedJsonFetch(apiUrl(`/api/skip-times?${query.toString()}`), undefined, {
+    key: `skip-times:${query.toString()}`,
+    cacheTtlMs: 30 * 60 * 1000,
+  });
+
+  return payload?.skipTimes || null;
 }
 
 function EpisodeButton({ episode, active, loading, onClick }) {
@@ -214,48 +345,61 @@ function WatchPageContent() {
 
     const anilistId = Number.parseInt(id, 10);
 
+    const applyMedia = (media) => {
+      if (!isMounted.current || !media) return;
+
+      const saved = getProgress(media.id);
+      const preferredEpisode = requestedEpisode > 0
+        ? requestedEpisode
+        : Number(saved?.episode) || 1;
+      const maxEpisode = getInitialEpisodeLimit(media);
+      const initialEpisode = Math.max(1, Math.min(preferredEpisode, maxEpisode));
+      const fallbackEpisodeCount = Math.max(maxEpisode, 1);
+
+      restoreReadyRef.current = true;
+      setAnime(media);
+      setActiveEpisode(initialEpisode);
+
+      setEpisodes(buildFallbackEpisodes(fallbackEpisodeCount));
+
+      fetchPreferredEpisodes({
+        anilistId,
+        malId: media.idMal,
+        fallbackCount: fallbackEpisodeCount,
+        media,
+      })
+        .then((episodeData) => {
+          if (!isMounted.current) return;
+          setEpisodes(episodeData);
+          if (episodeData.length > 0) {
+            setActiveEpisode((previous) => Math.min(previous, episodeData.length));
+          }
+        })
+        .catch((episodeError) => {
+          console.warn('[Watch] Episode fetch failed, using fallback episode list:', episodeError.message);
+          if (!isMounted.current) return;
+          setEpisodes(buildFallbackEpisodes(fallbackEpisodeCount));
+        });
+    };
+
     anilistRequest(ANIME_QUERY, { id: anilistId }, {
       cacheTtlMs: 5 * 60 * 1000,
       key: `watch-meta:${id}`,
     })
       .then((data) => {
-        if (!isMounted.current) return;
         const media = data?.Media;
         if (!media) throw new Error('Anime not found');
-
-        const saved = getProgress(media.id);
-        const preferredEpisode = requestedEpisode > 0
-          ? requestedEpisode
-          : Number(saved?.episode) || 1;
-        const maxEpisode = media.episodes || preferredEpisode;
-        const initialEpisode = Math.max(1, Math.min(preferredEpisode, maxEpisode));
-
-        restoreReadyRef.current = true;
-        setAnime(media);
-        setActiveEpisode(initialEpisode);
-
-        const malId = media.idMal;
-        if (malId) {
-          fetchEpisodes(malId)
-            .then((episodeData) => {
-              if (!isMounted.current) return;
-              if (episodeData.length) {
-                setEpisodes(episodeData);
-              } else if (media.episodes) {
-                setEpisodes(Array.from({ length: media.episodes }, (_, index) => ({ mal_id: index + 1, title: null })));
-              }
-            })
-            .catch((episodeError) => {
-              console.warn('[Watch] Episode fetch failed, using fallback episode list:', episodeError.message);
-              if (!isMounted.current || !media.episodes) return;
-              setEpisodes(Array.from({ length: media.episodes }, (_, index) => ({ mal_id: index + 1, title: null })));
-            });
-        } else if (media.episodes) {
-          setEpisodes(Array.from({ length: media.episodes }, (_, index) => ({ mal_id: index + 1, title: null })));
-        }
+        applyMedia(media);
       })
-      .catch((error) => {
-        console.error(error);
+      .catch(async (error) => {
+        try {
+          const fallback = await fetchJikanAnimeDetails(anilistId, {
+            keyPrefix: `watch-meta:jikan:${id}`,
+          });
+          applyMedia(fallback);
+        } catch {
+          console.error(error);
+        }
       })
       .finally(async () => {
         await ensureMinimumDelay(startedAt);
@@ -324,6 +468,34 @@ function WatchPageContent() {
   useEffect(() => {
     setSkipTimes(null);
   }, [anime?.id, activeEpisode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!anime?.idMal || activeEpisode <= 0) {
+      setSkipTimes(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetchSkipTimes(anime.idMal, activeEpisode)
+      .then((nextSkipTimes) => {
+        if (!cancelled) {
+          setSkipTimes(nextSkipTimes);
+        }
+      })
+      .catch((error) => {
+        console.warn('[Watch] Skip timestamp fetch failed:', error.message);
+        if (!cancelled) {
+          setSkipTimes(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [anime?.idMal, activeEpisode]);
 
   const handleDurationKnown = useCallback((seconds) => {
     if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return;
@@ -458,7 +630,7 @@ function WatchPageContent() {
                 </div>
               ) : null}
 
-              <div className="relative overflow-hidden rounded-[1.1rem] bg-black sm:rounded-[1.5rem]">
+              <div className="relative overflow-hidden">
                 {streamError ? (
                   <div className="flex aspect-video flex-col items-center justify-center gap-3 bg-[var(--color-ink)] px-4 text-center text-[var(--color-muted)]">
                     <RiAlertLine size={28} className="text-[var(--color-brass)]" />

@@ -1,4 +1,5 @@
 import { apiUrl } from '@/lib/apiBase';
+import { fetchJikanAnimeMetadataBatch } from '@/lib/jikan';
 import { scheduleRequest } from '@/lib/requestScheduler';
 
 export const MIN_SKELETON_MS = 650;
@@ -54,12 +55,18 @@ export async function fetchAnimeMetadataBatch(ids) {
     `)
     .join('\n');
 
-  const data = await anilistRequest(`query {\n${fields}\n}`, {}, {
-    cacheTtlMs: 10 * 60 * 1000,
-    key: `anilist:metadata-batch:${normalizedIds.join(',')}`,
-  });
+  try {
+    const data = await anilistRequest(`query {\n${fields}\n}`, {}, {
+      cacheTtlMs: 10 * 60 * 1000,
+      key: `anilist:metadata-batch:${normalizedIds.join(',')}`,
+    });
 
-  return normalizedIds
-    .map((_, index) => data?.[`item${index}`] || null)
-    .filter(Boolean);
+    return normalizedIds
+      .map((_, index) => data?.[`item${index}`] || null)
+      .filter(Boolean);
+  } catch {
+    return fetchJikanAnimeMetadataBatch(normalizedIds, {
+      cacheTtlMs: 10 * 60 * 1000,
+    });
+  }
 }

@@ -7,6 +7,7 @@ import { RiSearchEyeLine, RiSparkling2Fill } from '@remixicon/react';
 import { EmptyState, MediaCard, SearchField, SectionHeading, SurfacePanel, TopNav } from '@/components/ui';
 import { MediaGridSkeleton, SearchPageSkeleton } from '@/components/skeletons';
 import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
+import { searchJikanAnime } from '@/lib/jikan';
 
 const SEARCH_QUERY = `
 query ($s: String, $page: Int) {
@@ -48,8 +49,18 @@ function SearchInner() {
       setResults(media);
       setTotal(data?.Page?.pageInfo?.total ?? media.length);
     } catch {
-      setResults([]);
-      setTotal(0);
+      try {
+        const fallback = await searchJikanAnime(term, {
+          page: 1,
+          limit: 24,
+          key: `search:jikan:${term.trim().toLowerCase()}:1`,
+        });
+        setResults(fallback.media);
+        setTotal(fallback.total);
+      } catch {
+        setResults([]);
+        setTotal(0);
+      }
     } finally {
       await ensureMinimumDelay(startedAt, 450);
       setLoading(false);
@@ -93,7 +104,7 @@ function SearchInner() {
       <TopNav
         backHref="/"
         backLabel="Home"
-        rightSlot={<span className="text-xs uppercase tracking-[0.2em] text-[var(--color-muted)]">AniList Discovery</span>}
+        rightSlot={<span className="text-xs uppercase tracking-[0.2em] text-[var(--color-muted)]">Anime Discovery</span>}
       >
         <SearchField
           value={query}
@@ -113,7 +124,7 @@ function SearchInner() {
             title={query ? `Results for “${query}”` : 'Search the catalogue'}
             subtitle={
               query
-                ? `${total > 0 ? `${total}+ matches loaded` : 'No matches yet'} from the current AniList search feed.`
+                ? `${total > 0 ? `${total}+ matches loaded` : 'No matches yet'} from the current catalogue feed.`
                 : 'Type a title to explore polished anime cards, details pages, and the full watch flow.'
             }
             action={

@@ -32,8 +32,8 @@ import { ContinueRowSkeleton, HomePageSkeleton, ShelfSkeleton, SkeletonBlock } f
 import { useLazyMount } from '@/hooks/useLazyMount';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
 import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
+import { jikanRequest, normalizeJikanAnime, searchJikanAnime } from '@/lib/jikan';
 import { mediaTitle } from '@/lib/media';
-import { pacedJsonFetch } from '@/lib/requestScheduler';
 import { animeHref, watchHref } from '@/lib/routes';
 
 const CRITICAL_CACHE_KEY = 'home_critical_v2';
@@ -160,32 +160,11 @@ query ($s: String) {
   }
 }`;
 
-function normalizeJikanAnime(item) {
-  if (!item?.mal_id) return null;
-  return {
-    id: null,
-    idMal: item.mal_id,
-    title: {
-      romaji: item.title || item.title_english || item.title_japanese || 'Unknown',
-      english: item.title_english || item.title || item.title_japanese || 'Unknown',
-    },
-    coverImage: {
-      extraLarge: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || null,
-      large: item.images?.jpg?.image_url || item.images?.jpg?.large_image_url || null,
-      medium: item.images?.jpg?.image_url || item.images?.jpg?.large_image_url || null,
-    },
-    episodes: item.episodes || null,
-    meanScore: item.score ? Math.round(item.score * 10) : null,
-    genres: Array.isArray(item.genres) ? item.genres.map((genre) => genre.name).filter(Boolean) : [],
-    status: item.status === 'Currently Airing' ? 'RELEASING' : String(item.status || '').toUpperCase().replace(/\s+/g, '_'),
-    format: item.type ? String(item.type).toUpperCase().replace(/\s+/g, '_') : null,
-    nextAiringEpisode: null,
-    bannerImage: null,
-  };
-}
+const JIKAN_SECONDARY_KEYS = ['popular', 'topRated', 'upcoming', 'movies', 'action', 'romance', 'fantasy', 'comedy'];
 
 function mediaHref(media) {
   if (media?.id) return animeHref(media.id);
+  if (media?.idMal) return animeHref(media.idMal);
   const title = mediaTitle(media);
   return title ? `/search?q=${encodeURIComponent(title)}` : '/';
 }
@@ -199,9 +178,15 @@ function mediaIdentity(media, index = 0) {
   return `idx-${index}`;
 }
 
-async function fetchJikanList(url) {
-  const payload = await pacedJsonFetch(url, undefined, {
-    key: `jikan:${url}`,
+function getJikanSecondaryPayload(source) {
+  return JIKAN_SECONDARY_KEYS.reduce((payload, key) => {
+    if (source?.[key]) payload[key] = source[key];
+    return payload;
+  }, {});
+}
+
+async function fetchJikanList(path, query = {}) {
+  const payload = await jikanRequest(path, query, {
     cacheTtlMs: 10 * 60 * 1000,
   });
   return Array.isArray(payload?.data) ? payload.data.map(normalizeJikanAnime).filter(Boolean) : [];
@@ -209,10 +194,10 @@ async function fetchJikanList(url) {
 
 async function fetchJikanFallbackHome() {
   const [top, airing, popular, seasonNow] = await Promise.allSettled([
-    fetchJikanList('https://api.jikan.moe/v4/top/anime?limit=24'),
-    fetchJikanList('https://api.jikan.moe/v4/top/anime?filter=airing&limit=24'),
-    fetchJikanList('https://api.jikan.moe/v4/top/anime?filter=bypopularity&limit=24'),
-    fetchJikanList('https://api.jikan.moe/v4/seasons/now?limit=24'),
+    fetchJikanList('/top/anime', { limit: 24 }),
+    fetchJikanList('/top/anime', { filter: 'airing', limit: 24 }),
+    fetchJikanList('/top/anime', { filter: 'bypopularity', limit: 24 }),
+    fetchJikanList('/seasons/now', { limit: 24 }),
   ]);
 
   const get = (result) => (result.status === 'fulfilled' ? result.value : []);
@@ -283,7 +268,17 @@ function SearchBar() {
       setResults(media);
       setOpen(media.length > 0 || term.trim().length > 0);
     } catch {
-      setResults([]);
+      try {
+        const fallback = await searchJikanAnime(term, {
+          limit: 8,
+          key: `home:suggest:jikan:${term.trim().toLowerCase()}`,
+          cacheTtlMs: 45 * 1000,
+        });
+        setResults(fallback.media);
+        setOpen(fallback.media.length > 0 || term.trim().length > 0);
+      } catch {
+        setResults([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -391,7 +386,7 @@ function ContinueCard({ data }) {
   const destination = watchHref(data.seasonId, { episode: data.episode, time: data.time });
 
   return (
-    <Link href={destination} className="media-card group overflow-hidden">
+    <Link href={destination} className="rail-card media-card group overflow-hidden">
       <div className="media-card-art">
         {data.coverImage ? (
           <img src={data.coverImage} alt={data.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" loading="lazy" />
@@ -436,37 +431,33 @@ function ContinueWatchingRow() {
 
   return (
     <section className="mx-auto max-w-screen-xl px-4 pt-6 sm:px-6">
-      <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-        <SectionHeading
-          eyebrow="Your Progress"
-          title="Continue watching"
-          subtitle="Quick return cards for unfinished episodes and saved resume points."
-          action={<Link href="/continue-watching" className="button-secondary">View All</Link>}
-        />
-        <div className="relative mt-5 sm:mt-6">
-          <button
-            aria-label="Scroll continue watching left"
-            onClick={() => scrollRail(-1)}
-            className="button-ghost absolute left-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
-          >
-            <RiArrowLeftSLine size={18} />
-          </button>
-          <button
-            aria-label="Scroll continue watching right"
-            onClick={() => scrollRail(1)}
-            className="button-ghost absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
-          >
-            <RiArrowRightSLine size={18} />
-          </button>
-          <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
-            {items.map((item) => (
-              <div key={`${item.id}-${item.episode}`} className="rail-card">
-                <ContinueCard data={item} />
-              </div>
-            ))}
-          </div>
+      <SectionHeading
+        eyebrow="Your Progress"
+        title="Continue watching"
+        subtitle="Quick return cards for unfinished episodes and saved resume points."
+        action={<Link href="/continue-watching" className="button-secondary">View All</Link>}
+      />
+      <div className="relative mt-5 sm:mt-6">
+        <button
+          aria-label="Scroll continue watching left"
+          onClick={() => scrollRail(-1)}
+          className="button-ghost absolute left-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+        >
+          <RiArrowLeftSLine size={18} />
+        </button>
+        <button
+          aria-label="Scroll continue watching right"
+          onClick={() => scrollRail(1)}
+          className="button-ghost absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+        >
+          <RiArrowRightSLine size={18} />
+        </button>
+        <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
+          {items.map((item) => (
+            <ContinueCard key={`${item.id}-${item.episode}`} data={item} />
+          ))}
         </div>
-      </SurfacePanel>
+      </div>
     </section>
   );
 }
@@ -556,32 +547,34 @@ function Shelf({ id, title, subtitle, list }) {
 
   return (
     <section id={id} className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6">
-      <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-        <SectionHeading title={title} subtitle={subtitle} />
-        <div className="relative mt-5 sm:mt-6">
-          <button
-            aria-label={`Scroll ${title} left`}
-            onClick={() => scrollRail(-1)}
-            className="button-ghost absolute left-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
-          >
-            <RiArrowLeftSLine size={18} />
-          </button>
-          <button
-            aria-label={`Scroll ${title} right`}
-            onClick={() => scrollRail(1)}
-            className="button-ghost absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
-          >
-            <RiArrowRightSLine size={18} />
-          </button>
-          <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
-            {list.map((anime) => (
-              <div key={`${anime.id || `mal-${anime.idMal}`}-${title}`} className="rail-card">
-                <MediaCard anime={anime} href={mediaHref(anime)} compact />
-              </div>
-            ))}
-          </div>
+      <SectionHeading title={title} subtitle={subtitle} />
+      <div className="relative mt-5 sm:mt-6">
+        <button
+          aria-label={`Scroll ${title} left`}
+          onClick={() => scrollRail(-1)}
+          className="button-ghost absolute left-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+        >
+          <RiArrowLeftSLine size={18} />
+        </button>
+        <button
+          aria-label={`Scroll ${title} right`}
+          onClick={() => scrollRail(1)}
+          className="button-ghost absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+        >
+          <RiArrowRightSLine size={18} />
+        </button>
+        <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
+          {list.map((anime) => (
+            <MediaCard
+              key={`${anime.id || `mal-${anime.idMal}`}-${title}`}
+              anime={anime}
+              href={mediaHref(anime)}
+              compact
+              className="rail-card"
+            />
+          ))}
         </div>
-      </SurfacePanel>
+      </div>
     </section>
   );
 }
@@ -640,6 +633,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [provider, setProvider] = useState('AniList');
+  const [fetchDebug, setFetchDebug] = useState('awaiting initial fetch');
   const [activeTopics, setActiveTopics] = useState([]);
 
   const mergedData = useMemo(() => {
@@ -659,6 +653,15 @@ export default function HomePage() {
 
   const loadSecondary = useCallback(async () => {
     if (secondary || secondaryLoading) return;
+    if (data?.provider === 'jikan') {
+      const jikanSecondary = getJikanSecondaryPayload(data);
+      if (Object.keys(jikanSecondary).length > 0) {
+        setSecondary(jikanSecondary);
+        setCache(SECONDARY_CACHE_KEY, jikanSecondary);
+        setFetchDebug('homepage source: Jikan fallback data (embedded shelves)');
+      }
+      return;
+    }
 
     setSecondaryLoading(true);
     try {
@@ -668,12 +671,25 @@ export default function HomePage() {
       });
       setSecondary(payload);
       setCache(SECONDARY_CACHE_KEY, payload);
+      setFetchDebug((current) => (current.startsWith('homepage source: AniList') ? current : 'homepage source: AniList live'));
     } catch (secondaryError) {
       console.warn('[Home] Secondary fetch failed:', secondaryError.message);
+      try {
+        const fallback = await fetchJikanFallbackHome();
+        const jikanSecondary = getJikanSecondaryPayload(fallback);
+        if (Object.keys(jikanSecondary).length > 0) {
+          setSecondary(jikanSecondary);
+          setCache(SECONDARY_CACHE_KEY, jikanSecondary);
+          setProvider((current) => (current === 'AniList' ? 'AniList + Jikan' : current));
+          setFetchDebug('homepage source: AniList primary + Jikan secondary fallback');
+        }
+      } catch (fallbackError) {
+        console.warn('[Home] Jikan secondary fallback failed:', fallbackError.message);
+      }
     } finally {
       setSecondaryLoading(false);
     }
-  }, [secondary, secondaryLoading]);
+  }, [data, secondary, secondaryLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -686,6 +702,10 @@ export default function HomePage() {
       if (cachedCritical && !cancelled) {
         setData({ ...cachedCritical, provider: cachedCritical.provider || 'anilist' });
         setProvider(cachedCritical.provider === 'jikan' ? 'Jikan Fallback' : 'AniList');
+        setFetchDebug(cachedCritical.provider === 'jikan' ? 'homepage source: session cache (Jikan fallback)' : 'homepage source: session cache (AniList)');
+        if (cachedCritical.provider === 'jikan' && !cachedSecondary) {
+          setSecondary(getJikanSecondaryPayload(cachedCritical));
+        }
       }
 
       if (cachedSecondary && !cancelled) {
@@ -702,6 +722,7 @@ export default function HomePage() {
           if (!cancelled) {
             setData(payload);
             setProvider('AniList');
+            setFetchDebug('homepage source: AniList live');
           }
           setCache(CRITICAL_CACHE_KEY, payload);
         } catch (criticalError) {
@@ -710,9 +731,12 @@ export default function HomePage() {
             const fallback = await fetchJikanFallbackHome();
             if (!cancelled) {
               setData(fallback);
+              setSecondary(getJikanSecondaryPayload(fallback));
               setProvider('Jikan Fallback');
+              setFetchDebug('homepage source: Jikan live fallback');
             }
             setCache(CRITICAL_CACHE_KEY, fallback);
+            setCache(SECONDARY_CACHE_KEY, getJikanSecondaryPayload(fallback));
           } catch (fallbackError) {
             if (!cancelled) setError(fallbackError.message || 'Failed to load homepage');
           }
@@ -849,6 +873,7 @@ export default function HomePage() {
                   <MetaPill icon={RiCalendarLine}>Refreshes every 15 min</MetaPill>
                 </div>
               </div>
+              <p className="mt-3 text-[0.68rem] uppercase tracking-[0.14em] text-[var(--color-muted)]">{fetchDebug}</p>
 
               <div className="hide-scrollbar mt-5 flex gap-2 overflow-x-auto pb-1 sm:mt-6">
                 <button

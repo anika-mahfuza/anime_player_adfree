@@ -356,11 +356,11 @@ canvas {
 }
 
 .art-video-player {
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 1.5rem !important;
+  border: 0 !important;
+  border-radius: 0 !important;
   overflow: hidden !important;
-  background: #000 !important;
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.4) !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .art-video-player .art-bottom,
@@ -379,6 +379,7 @@ canvas {
   background: transparent !important;
   filter: none !important;
   opacity: 1 !important;
+  object-fit: contain !important;
 }
 
 .art-video-player .art-controls {
@@ -416,12 +417,31 @@ canvas {
 }
 
 .art-video-player .art-setting-panel,
-.art-video-player .art-info-panel,
-.art-video-player .art-notice {
+.art-video-player .art-info-panel {
   background: rgba(8, 10, 14, 0.94) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 1rem !important;
   backdrop-filter: blur(16px) !important;
+}
+
+.art-video-player .art-notice {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.art-video-player .art-notice-inner,
+.art-video-player.art-notice-show .art-notice,
+.art-video-player.art-notice-show .art-notice-inner {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
 }
 
 @media (max-width: 480px) {
@@ -478,7 +498,7 @@ canvas {
   }
 
   .art-video-player {
-    border-radius: 1.15rem !important;
+    border-radius: 0 !important;
   }
 }
 

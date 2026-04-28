@@ -605,7 +605,7 @@ export default function AnimePlayer({
       <div className="relative w-full">
         <div
           ref={containerRef}
-          className="aspect-video w-full overflow-hidden rounded-[1rem] bg-black shadow-2xl sm:rounded-xl"
+          className="aspect-video w-full bg-black"
         />
 
         {/* Skip Intro */}

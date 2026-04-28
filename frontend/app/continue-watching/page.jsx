@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { RiArrowLeftSLine, RiLoader4Line, RiPlayMiniFill, RiTimeLine, RiTv2Line } from '@remixicon/react';
-import { ContinueBadge, EmptyState, SectionHeading, SurfacePanel, TopNav } from '@/components/ui';
+import { ContinueBadge, EmptyState, SectionHeading, TopNav } from '@/components/ui';
 import { ContinueWatchingSkeleton } from '@/components/skeletons';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
 import { watchHref } from '@/lib/routes';
@@ -85,7 +85,7 @@ export default function ContinueWatchingPage() {
       </TopNav>
 
       <section className="mx-auto max-w-screen-xl px-4 py-8 sm:px-6 sm:py-10">
-        <SurfacePanel className="mb-8 overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
+        <div className="mb-8">
           <SectionHeading
             eyebrow="Personal Queue"
             title="Pick up right where you left off."
@@ -97,7 +97,7 @@ export default function ContinueWatchingPage() {
               </Link>
             }
           />
-        </SurfacePanel>
+        </div>
         {!loading && items.length === 0 ? (
           <EmptyState
             icon={RiTv2Line}
