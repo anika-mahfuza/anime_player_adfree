@@ -111,11 +111,10 @@ function EpisodeButton({ episode, active, loading, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-[1.15rem] border px-4 py-3 text-left transition ${
-        active
+      className={`w-full rounded-[1.15rem] border px-4 py-3 text-left transition ${active
           ? 'border-[rgba(183,82,106,0.4)] bg-[rgba(139,40,61,0.16)] text-[var(--color-ivory)]'
           : 'border-white/8 bg-white/5 text-[var(--color-mist)] hover:bg-white/8'
-      }`}
+        }`}
     >
       <div className="flex items-center gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[rgba(8,10,14,0.45)] text-sm font-semibold">
