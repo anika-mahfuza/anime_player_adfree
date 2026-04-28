@@ -195,7 +195,13 @@ function AnimeDetailsInner() {
   const studio = anime.studios?.nodes?.[0]?.name;
   const seasonLabel = formatSeason(anime.season, anime.seasonYear);
   const saved = getProgress(anime.id);
-  const watchLabel = saved?.episode > 1 ? `Continue from Episode ${saved.episode}` : 'Play Now';
+  const resumeTime = Number(saved?.episodePositions?.[saved?.episode] || 0);
+  const watchLabel = saved?.episode > 1
+    ? `Continue from Episode ${saved.episode}`
+    : resumeTime > 0
+      ? 'Resume Episode 1'
+      : 'Play Now';
+  const watchDestination = watchHref(anime.id, { episode: saved?.episode, time: resumeTime });
 
   return (
     <main className="site-shell">
@@ -206,7 +212,6 @@ function AnimeDetailsInner() {
           ) : anime.coverImage?.extraLarge ? (
             <img src={anime.coverImage.extraLarge} alt="" className="h-full w-full object-cover" />
           ) : null}
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.25),rgba(8,10,14,0.92))]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(196,160,96,0.18),transparent_28%),radial-gradient(circle_at_85%_15%,rgba(139,40,61,0.28),transparent_30%)]" />
         </div>
 
@@ -265,7 +270,7 @@ function AnimeDetailsInner() {
               ) : null}
 
               <div className="mt-8 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:gap-3 lg:justify-start">
-                <QuickActionLink href={watchHref(anime.id)} primary icon={RiPlayMiniFill}>
+                <QuickActionLink href={watchDestination} primary icon={RiPlayMiniFill}>
                   {watchLabel}
                 </QuickActionLink>
                 <QuickActionLink href={`/search?q=${encodeURIComponent(title)}`} icon={RiSparkling2Fill}>

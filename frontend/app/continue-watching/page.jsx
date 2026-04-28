@@ -11,9 +11,10 @@ function ContinueGridCard({ item }) {
   const progress = item.totalEpisodes
     ? Math.min(100, Math.max(0, (item.episode / item.totalEpisodes) * 100))
     : 0;
+  const destination = watchHref(item.seasonId, { episode: item.episode, time: item.time });
 
   return (
-    <Link href={watchHref(item.seasonId)} className="media-card group overflow-hidden">
+    <Link href={destination} className="media-card group overflow-hidden">
       <div className="media-card-art">
         {item.coverImage ? (
           <img
@@ -27,7 +28,6 @@ function ContinueGridCard({ item }) {
             <RiTv2Line size={34} />
           </div>
         )}
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.12),rgba(8,10,14,0.9))]" />
         <div className="absolute inset-x-0 top-0 flex justify-between p-2.5 sm:p-3">
           <ContinueBadge>Continue</ContinueBadge>
           <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-[rgba(8,10,14,0.56)] text-[var(--color-ivory)] transition duration-300 group-hover:bg-[rgba(139,40,61,0.92)] sm:h-11 sm:w-11">

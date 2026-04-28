@@ -54,10 +54,14 @@ export function useWatchProgress() {
 function normalizeContinueItem(meta, data) {
   if (!meta?.id) return null;
 
+  const episode = Number(data?.episode) || 1;
+  const time = Number(data?.episodePositions?.[episode]) || 0;
+
   return {
     id: meta.id,
     seasonId: data.seasonId || meta.id,
-    episode: data.episode,
+    episode,
+    time,
     totalEpisodes: meta.episodes || 1,
     title: meta.title?.english || meta.title?.romaji || 'Unknown',
     coverImage: meta.coverImage?.large,

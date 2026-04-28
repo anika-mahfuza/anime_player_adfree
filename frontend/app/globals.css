@@ -359,18 +359,32 @@ canvas {
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 1.5rem !important;
   overflow: hidden !important;
-  background: #050608 !important;
+  background: #000 !important;
   box-shadow: 0 24px 72px rgba(0, 0, 0, 0.4) !important;
 }
 
 .art-video-player .art-bottom,
 .art-video-player .art-top {
-  background: linear-gradient(180deg, rgba(8, 10, 14, 0.1), rgba(8, 10, 14, 0.76)) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.art-video-player .art-mask,
+.art-video-player .art-mask-header,
+.art-video-player .art-mask-footer,
+.art-video-player .art-poster,
+.art-video-player .art-video,
+.art-video-player video {
+  background: transparent !important;
+  filter: none !important;
+  opacity: 1 !important;
 }
 
 .art-video-player .art-controls {
   font-family: var(--font-sans) !important;
   color: var(--color-ivory) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85) !important;
 }
 
 .art-video-player .art-control {

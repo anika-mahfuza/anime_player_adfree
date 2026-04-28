@@ -87,11 +87,13 @@ export function ShelfSkeleton({ title, subtitle, cardCount = 5 }) {
   );
 }
 
-export function MediaGridSkeleton({ count = 8, className = '' }) {
+export function MediaGridSkeleton({ count = 8, className = '', cardWrapperClassName = '' }) {
   return (
     <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${className}`}>
       {Array.from({ length: count }).map((_, index) => (
-        <MediaCardSkeleton key={index} />
+        <div key={index} className={cardWrapperClassName}>
+          <MediaCardSkeleton />
+        </div>
       ))}
     </div>
   );

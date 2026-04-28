@@ -187,7 +187,6 @@ export function MediaCard({ anime, href, compact = false, priority = false, clas
             <RiTv2Line size={compact ? 28 : 34} />
           </div>
         )}
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.04),rgba(8,10,14,0.9))]" />
         <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 p-2.5 sm:p-3">
           {score ? (
             <MetaPill icon={RiStarFill} accent="var(--color-brass)" className="bg-[rgba(8,10,14,0.6)]">

@@ -173,6 +173,8 @@ export default function WatchPage() {
 function WatchPageContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
+  const requestedEpisode = Math.max(0, Number.parseInt(searchParams.get('ep') || '', 10) || 0);
+  const requestedTime = Math.max(0, Number.parseInt(searchParams.get('t') || '', 10) || 0);
 
   const [anime, setAnime] = useState(null);
   const [episodes, setEpisodes] = useState([]);
@@ -189,6 +191,7 @@ function WatchPageContent() {
   const episodeRefs = useRef({});
   const { updateProgress, getProgress } = useWatchProgress();
   const isMounted = useRef(true);
+  const restoreReadyRef = useRef(false);
 
   useEffect(() => {
     isMounted.current = true;
@@ -200,11 +203,14 @@ function WatchPageContent() {
   useEffect(() => {
     if (!id) return;
     const startedAt = Date.now();
+    restoreReadyRef.current = false;
     setMetaLoading(true);
     setAnime(null);
     setEpisodes([]);
     setActiveEpisode(1);
+    setHasStarted(false);
     setStreamUrl('');
+    setStreamError('');
 
     const anilistId = Number.parseInt(id, 10);
 
@@ -216,10 +222,17 @@ function WatchPageContent() {
         if (!isMounted.current) return;
         const media = data?.Media;
         if (!media) throw new Error('Anime not found');
-        setAnime(media);
 
         const saved = getProgress(media.id);
-        if (saved && saved.episode > 0) setActiveEpisode(saved.episode);
+        const preferredEpisode = requestedEpisode > 0
+          ? requestedEpisode
+          : Number(saved?.episode) || 1;
+        const maxEpisode = media.episodes || preferredEpisode;
+        const initialEpisode = Math.max(1, Math.min(preferredEpisode, maxEpisode));
+
+        restoreReadyRef.current = true;
+        setAnime(media);
+        setActiveEpisode(initialEpisode);
 
         const malId = media.idMal;
         if (malId) {
@@ -248,7 +261,7 @@ function WatchPageContent() {
         await ensureMinimumDelay(startedAt);
         if (isMounted.current) setMetaLoading(false);
       });
-  }, [id, getProgress]);
+  }, [id, getProgress, requestedEpisode]);
 
   const loadStream = useCallback(async (episodeNumber) => {
     if (!anime) return;
@@ -299,8 +312,10 @@ function WatchPageContent() {
 
   useEffect(() => {
     if (!anime || hasStarted) return;
-    if (activeEpisode > 1) setHasStarted(true);
-  }, [anime, hasStarted, activeEpisode]);
+    if (activeEpisode > 1 || (requestedEpisode === activeEpisode && requestedTime > 0)) {
+      setHasStarted(true);
+    }
+  }, [anime, hasStarted, activeEpisode, requestedEpisode, requestedTime]);
 
   useEffect(() => {
     episodeRefs.current[activeEpisode]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -316,7 +331,7 @@ function WatchPageContent() {
   }, []);
 
   useEffect(() => {
-    if (anime && activeEpisode > 0) {
+    if (anime && activeEpisode > 0 && restoreReadyRef.current) {
       updateProgress(anime.id, {
         episode: activeEpisode,
         seasonId: anime.id,
@@ -400,7 +415,11 @@ function WatchPageContent() {
   const currentEpisodeData = episodes.find((episode) => episode.mal_id === activeEpisode);
   const nextEpisodeData = episodes.find((episode) => episode.mal_id === activeEpisode + 1);
   const savedProgress = getProgress(anime.id) || null;
-  const resumeTimeForActiveEpisode = Number(savedProgress?.episodePositions?.[activeEpisode] || 0);
+  const resumeEpisode = requestedEpisode > 0 ? requestedEpisode : Number(savedProgress?.episode || 0);
+  const resumeTimeForActiveEpisode = requestedEpisode === activeEpisode && requestedTime > 0
+    ? requestedTime
+    : Number(savedProgress?.episodePositions?.[activeEpisode] || 0);
+  const hasResumePoint = activeEpisode > 1 || resumeTimeForActiveEpisode > 0;
 
   return (
     <main className="site-shell">
@@ -415,14 +434,14 @@ function WatchPageContent() {
         </div>
       </TopNav>
 
-      {savedProgress?.episode > 1 ? (
+      {resumeEpisode > 0 && (resumeEpisode > 1 || resumeTimeForActiveEpisode > 0) ? (
         <section className="mx-auto max-w-screen-xl px-4 pt-5 sm:px-6">
           <SurfacePanel className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
             <div className="flex items-center gap-2 text-sm text-[var(--color-mist)]">
               <RiHistoryLine size={16} className="text-[var(--color-brass)]" />
-              Continue from episode {savedProgress.episode}
+              {resumeEpisode > 1 ? `Continue from episode ${resumeEpisode}` : 'Resume episode 1'}
             </div>
-            <button onClick={() => setActiveEpisode(savedProgress.episode)} className="button-primary">
+            <button onClick={() => setActiveEpisode(resumeEpisode)} className="button-primary">
               Resume
             </button>
           </SurfacePanel>
@@ -456,14 +475,13 @@ function WatchPageContent() {
                     {anime.coverImage?.extraLarge ? (
                       <img src={anime.coverImage.extraLarge} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" />
                     ) : null}
-                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.2),rgba(8,10,14,0.9))]" />
                     <div className="relative z-10">
                       <button onClick={handleStartWatching} className="button-primary">
                         <RiPlayMiniFill size={20} className="translate-x-[1px]" />
-                        {activeEpisode > 1 ? `Resume Episode ${activeEpisode}` : 'Start Watching'}
+                        {hasResumePoint ? `Resume Episode ${activeEpisode}` : 'Start Watching'}
                       </button>
                       <p className="mt-3 text-sm text-[var(--color-muted)]">
-                        {activeEpisode > 1 ? 'Your saved progress is ready to resume.' : 'Press play to begin episode 1.'}
+                        {hasResumePoint ? 'Your saved progress is ready to resume.' : 'Press play to begin episode 1.'}
                       </p>
                     </div>
                   </div>

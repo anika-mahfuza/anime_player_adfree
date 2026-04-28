@@ -28,7 +28,7 @@ import {
   UiIcons,
   cx,
 } from '@/components/ui';
-import { ContinueRowSkeleton, HomePageSkeleton, MediaGridSkeleton, ShelfSkeleton, SkeletonBlock } from '@/components/skeletons';
+import { ContinueRowSkeleton, HomePageSkeleton, ShelfSkeleton, SkeletonBlock } from '@/components/skeletons';
 import { useLazyMount } from '@/hooks/useLazyMount';
 import { useContinueWatching } from '@/hooks/useWatchProgress';
 import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
@@ -388,9 +388,10 @@ function ContinueCard({ data }) {
   const progress = data.totalEpisodes
     ? Math.min(100, Math.max(0, (data.episode / data.totalEpisodes) * 100))
     : 0;
+  const destination = watchHref(data.seasonId, { episode: data.episode, time: data.time });
 
   return (
-    <Link href={watchHref(data.seasonId)} className="media-card group overflow-hidden">
+    <Link href={destination} className="media-card group overflow-hidden">
       <div className="media-card-art">
         {data.coverImage ? (
           <img src={data.coverImage} alt={data.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" loading="lazy" />
@@ -399,7 +400,6 @@ function ContinueCard({ data }) {
             <UiIcons.tv size={32} />
           </div>
         )}
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.06),rgba(8,10,14,0.88))]" />
         <div className="absolute left-3 top-3">
           <ContinueBadge>Resume</ContinueBadge>
         </div>
@@ -766,7 +766,37 @@ export default function HomePage() {
       .slice(0, 6);
   }, [mergedData]);
 
-  const popularGrid = getSectionMedia(mergedData, 'popular').slice(0, 12);
+  const popularNowRail = useMemo(() => {
+    const pools = [
+      ...getSectionMedia(mergedData, 'trending').map((anime) => ({ anime, source: 'trending' })),
+      ...getSectionMedia(mergedData, 'airing').map((anime) => ({ anime, source: 'airing' })),
+      ...getSectionMedia(mergedData, 'topRated').map((anime) => ({ anime, source: 'topRated' })),
+      ...getSectionMedia(mergedData, 'popular').map((anime) => ({ anime, source: 'popular' })),
+    ];
+
+    const sourceBoost = { trending: 30, airing: 24, topRated: 10, popular: 4 };
+    const bestById = new Map();
+
+    for (const { anime, source } of pools) {
+      const key = String(anime?.id || anime?.idMal || '');
+      if (!key) continue;
+
+      const score = Number(anime?.meanScore || 0)
+        + (anime?.status === 'RELEASING' ? 14 : 0)
+        + (anime?.nextAiringEpisode?.episode ? 10 : 0)
+        + (sourceBoost[source] || 0);
+      const existing = bestById.get(key);
+
+      if (!existing || score > existing.score) {
+        bestById.set(key, { anime, score });
+      }
+    }
+
+    return Array.from(bestById.values())
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.anime)
+      .slice(0, 12);
+  }, [mergedData]);
   const totalCards = SECTION_META.reduce((count, section) => count + getSectionMedia(mergedData, section.key).length, 0);
   const visibleSections = useMemo(() => {
     if (!activeTopics.length) return SECTION_META;
@@ -873,27 +903,23 @@ export default function HomePage() {
             );
           })}
 
-          {!isFiltering && (secondaryLoading || popularGrid.length > 0 || !secondary) ? (
-            <section className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6">
-              <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-                <SectionHeading
-                  eyebrow="Signature Grid"
+          {!isFiltering && (secondaryLoading || popularNowRail.length > 0 || !secondary) ? (
+            secondary ? (
+              <Shelf
+                id="popular-right-now"
+                title="Popular right now"
+                subtitle="A blended rail of trending, airing, and breakout titles that are hot right now."
+                list={popularNowRail}
+              />
+            ) : (
+              <div onMouseEnter={loadSecondary}>
+                <ShelfSkeleton
                   title="Popular right now"
-                  subtitle="A broader grid for quick browsing once the curated rails have set the tone."
+                  subtitle="A blended rail of trending, airing, and breakout titles that are hot right now."
+                  cardCount={4}
                 />
-                {secondary ? (
-                  <div className="mt-6 grid grid-cols-1 gap-4 min-[430px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {popularGrid.map((anime) => (
-                      <MediaCard key={`${anime.id || `mal-${anime.idMal}`}-grid`} anime={anime} href={mediaHref(anime)} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-6" onMouseEnter={loadSecondary}>
-                    <MediaGridSkeleton count={4} className="min-[430px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" />
-                  </div>
-                )}
-              </SurfacePanel>
-            </section>
+              </div>
+            )
           ) : null}
 
           {visibleSections.length === 0 ? (
