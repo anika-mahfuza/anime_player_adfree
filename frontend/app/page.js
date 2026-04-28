@@ -321,7 +321,7 @@ function SearchBar() {
       />
 
       {open && (loading || results.length > 0) ? (
-        <div className="absolute left-0 right-0 top-full z-50 mt-3 max-h-[min(22rem,calc(100vh-8rem))] overflow-y-auto overflow-x-hidden rounded-[1.35rem] border border-white/8 bg-[rgba(8,10,14,0.96)] shadow-[0_24px_70px_rgba(0,0,0,0.4)] backdrop-blur-2xl sm:rounded-[1.6rem]">
+        <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(22rem,calc(100vh-8rem))] overflow-y-auto overflow-x-hidden rounded-xl border border-white/8 bg-[rgba(8,10,14,0.98)] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
           {loading ? (
             Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="border-b border-white/6 px-4 py-3 last:border-b-0">
@@ -435,38 +435,35 @@ function ContinueWatchingRow() {
   if (items.length === 0) return null;
 
   return (
-    <section className="mx-auto max-w-screen-xl px-4 pt-6 sm:px-6">
-      <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-        <SectionHeading
-          eyebrow="Your Progress"
-          title="Continue watching"
-          subtitle="Quick return cards for unfinished episodes and saved resume points."
-          action={<Link href="/continue-watching" className="button-secondary">View All</Link>}
-        />
-        <div className="relative mt-5 sm:mt-6">
-          <button
-            aria-label="Scroll continue watching left"
-            onClick={() => scrollRail(-1)}
-            className="button-ghost absolute left-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
-          >
-            <RiArrowLeftSLine size={18} />
-          </button>
-          <button
-            aria-label="Scroll continue watching right"
-            onClick={() => scrollRail(1)}
-            className="button-ghost absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
-          >
-            <RiArrowRightSLine size={18} />
-          </button>
-          <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
-            {items.map((item) => (
-              <div key={`${item.id}-${item.episode}`} className="rail-card">
-                <ContinueCard data={item} />
-              </div>
-            ))}
-          </div>
+    <section className="mx-auto max-w-screen-xl px-4 pt-7 sm:px-6">
+      <SectionHeading
+        eyebrow="Your Progress"
+        title="Continue watching"
+        action={<Link href="/continue-watching" className="button-secondary">View All</Link>}
+      />
+      <div className="relative mt-4">
+        <button
+          aria-label="Scroll continue watching left"
+          onClick={() => scrollRail(-1)}
+          className="button-ghost absolute left-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+        >
+          <RiArrowLeftSLine size={18} />
+        </button>
+        <button
+          aria-label="Scroll continue watching right"
+          onClick={() => scrollRail(1)}
+          className="button-ghost absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+        >
+          <RiArrowRightSLine size={18} />
+        </button>
+        <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
+          {items.map((item) => (
+            <div key={`${item.id}-${item.episode}`} className="rail-card">
+              <ContinueCard data={item} />
+            </div>
+          ))}
         </div>
-      </SurfacePanel>
+      </div>
     </section>
   );
 }
@@ -488,14 +485,13 @@ function HeroSpotlight({ list }) {
   const title = mediaTitle(active);
 
   return (
-    <section className="mx-auto max-w-screen-xl px-4 pt-7 sm:px-6 sm:pt-8">
-      <SurfacePanel className="relative overflow-hidden px-0 py-0">
-        <div className="relative min-h-[22rem] overflow-hidden rounded-[1rem] sm:min-h-[34rem] sm:rounded-[1.75rem]">
+    <section className="mx-auto max-w-screen-xl px-4 pt-6 sm:px-6">
+      <div className="relative min-h-[20rem] overflow-hidden rounded-xl border border-white/6 sm:min-h-[32rem] sm:rounded-2xl">
           {backdrop ? <img src={backdrop} alt={title} className="absolute inset-0 h-full w-full object-cover" /> : null}
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.55)_0%,rgba(8,10,14,0.92)_100%)] sm:bg-[linear-gradient(90deg,rgba(8,10,14,0.92)_0%,rgba(8,10,14,0.72)_46%,rgba(8,10,14,0.45)_100%)]" />
           <div className="absolute inset-0 hidden sm:block bg-[radial-gradient(circle_at_20%_16%,rgba(196,160,96,0.14),transparent_24%),radial-gradient(circle_at_80%_18%,rgba(139,40,61,0.18),transparent_26%)]" />
 
-          <div className="relative grid min-h-[22rem] gap-4 p-4 sm:min-h-[34rem] sm:gap-6 sm:p-8 lg:p-10">
+          <div className="relative grid min-h-[20rem] gap-4 p-5 sm:min-h-[32rem] sm:gap-6 sm:p-8 lg:p-10">
             <div className="flex max-w-3xl flex-col justify-end">
               <div className="mb-3 inline-flex items-center gap-2 text-[0.66rem] uppercase tracking-[0.18em] text-[var(--color-brass)] sm:mb-4 sm:text-[0.72rem] sm:tracking-[0.22em]">
                 <RiFireFill size={15} />
@@ -533,11 +529,8 @@ function HeroSpotlight({ list }) {
                 </QuickActionLink>
               </div>
             </div>
-
-
           </div>
-        </div>
-      </SurfacePanel>
+      </div>
     </section>
   );
 }
@@ -555,33 +548,31 @@ function Shelf({ id, title, subtitle, list }) {
   if (!list.length) return null;
 
   return (
-    <section id={id} className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6">
-      <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-        <SectionHeading title={title} subtitle={subtitle} />
-        <div className="relative mt-5 sm:mt-6">
-          <button
-            aria-label={`Scroll ${title} left`}
-            onClick={() => scrollRail(-1)}
-            className="button-ghost absolute left-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
-          >
-            <RiArrowLeftSLine size={18} />
-          </button>
-          <button
-            aria-label={`Scroll ${title} right`}
-            onClick={() => scrollRail(1)}
-            className="button-ghost absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
-          >
-            <RiArrowRightSLine size={18} />
-          </button>
-          <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
-            {list.map((anime) => (
-              <div key={`${anime.id || `mal-${anime.idMal}`}-${title}`} className="rail-card">
-                <MediaCard anime={anime} href={mediaHref(anime)} compact />
-              </div>
-            ))}
-          </div>
+    <section id={id} className="mx-auto max-w-screen-xl px-4 pt-7 sm:px-6">
+      <SectionHeading title={title} subtitle={subtitle} />
+      <div className="relative mt-4">
+        <button
+          aria-label={`Scroll ${title} left`}
+          onClick={() => scrollRail(-1)}
+          className="button-ghost absolute left-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+        >
+          <RiArrowLeftSLine size={18} />
+        </button>
+        <button
+          aria-label={`Scroll ${title} right`}
+          onClick={() => scrollRail(1)}
+          className="button-ghost absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[rgba(8,10,14,0.62)] px-3 lg:inline-flex"
+        >
+          <RiArrowRightSLine size={18} />
+        </button>
+        <div ref={railRef} className="hide-scrollbar flex gap-3 overflow-x-auto pb-1 sm:gap-4">
+          {list.map((anime) => (
+            <div key={`${anime.id || `mal-${anime.idMal}`}-${title}`} className="rail-card">
+              <MediaCard anime={anime} href={mediaHref(anime)} compact />
+            </div>
+          ))}
         </div>
-      </SurfacePanel>
+      </div>
     </section>
   );
 }
@@ -806,26 +797,14 @@ export default function HomePage() {
           <HeroSpotlight list={featuredList} />
 
           <section className="mx-auto max-w-screen-xl px-4 pt-6 sm:px-6">
-            <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                <SectionHeading
-                  eyebrow="Editorial Discovery"
-                  title="A premium anime front page"
-                  subtitle="A curated blend of trending, airing, high-score, and genre-led shelves backed by AniList and resilient fallback data."
-                />
-                <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                  <MetaPill icon={RiSparkling2Fill} accent="var(--color-brass)">{totalCards} picks loaded</MetaPill>
-                  <MetaPill icon={RiTrophyLine}>Source: {provider}</MetaPill>
-                  <MetaPill icon={RiCalendarLine}>Refreshes every 15 min</MetaPill>
-                </div>
-              </div>
-
-              <div className="hide-scrollbar mt-5 flex gap-2 overflow-x-auto pb-1 sm:mt-6">
+            <div className="flex items-center justify-between gap-3 border-b border-white/6 pb-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">Source: {provider} &middot; {totalCards} titles</p>
+              <div className="hide-scrollbar flex gap-1.5 overflow-x-auto">
                 <button
                   onClick={clearTopics}
                   className={cx('tag-chip whitespace-nowrap', !isFiltering ? '!border-[rgba(196,160,96,0.32)] !bg-[rgba(196,160,96,0.14)] !text-[var(--color-brass)]' : '')}
                 >
-                  All Collections
+                  All
                 </button>
                 {FILTER_CHIPS.map((chip) => {
                   const active = activeTopics.includes(chip.key);
@@ -841,7 +820,7 @@ export default function HomePage() {
                   );
                 })}
               </div>
-            </SurfacePanel>
+            </div>
           </section>
 
           <ContinueWatchingRow />
@@ -874,25 +853,19 @@ export default function HomePage() {
           })}
 
           {!isFiltering && (secondaryLoading || popularGrid.length > 0 || !secondary) ? (
-            <section className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6">
-              <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-                <SectionHeading
-                  eyebrow="Signature Grid"
-                  title="Popular right now"
-                  subtitle="A broader grid for quick browsing once the curated rails have set the tone."
-                />
-                {secondary ? (
-                  <div className="mt-6 grid grid-cols-1 gap-4 min-[430px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {popularGrid.map((anime) => (
-                      <MediaCard key={`${anime.id || `mal-${anime.idMal}`}-grid`} anime={anime} href={mediaHref(anime)} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-6" onMouseEnter={loadSecondary}>
-                    <MediaGridSkeleton count={4} className="min-[430px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" />
-                  </div>
-                )}
-              </SurfacePanel>
+            <section className="mx-auto max-w-screen-xl px-4 pt-7 sm:px-6">
+              <SectionHeading title="Popular right now" />
+              {secondary ? (
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {popularGrid.map((anime) => (
+                    <MediaCard key={`${anime.id || `mal-${anime.idMal}`}-grid`} anime={anime} href={mediaHref(anime)} />
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-4" onMouseEnter={loadSecondary}>
+                  <MediaGridSkeleton count={4} className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" />
+                </div>
+              )}
             </section>
           ) : null}
 

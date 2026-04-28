@@ -27,11 +27,11 @@ export function cx(...values) {
 export function BrandMark({ compact = false }) {
   return (
     <Link href="/" className="inline-flex max-w-full items-center gap-2.5 sm:gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[1.15rem] bg-[linear-gradient(145deg,rgba(139,40,61,0.95),rgba(84,24,37,0.95))] shadow-[0_16px_40px_rgba(48,13,21,0.55)] sm:h-11 sm:w-11 sm:rounded-[1.35rem]">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[rgba(139,40,61,0.9)]">
         <Image src="/logo.png" alt="AniStream" width={88} height={88} className="h-full w-full object-contain" />
       </div>
       <span className="min-w-0 flex flex-col leading-none">
-        <span className="truncate font-[family:var(--font-display)] text-[1rem] tracking-[0.18em] text-[var(--color-mist)] uppercase sm:text-[1.15rem] sm:tracking-[0.2em]">
+        <span className="truncate font-[family:var(--font-display)] text-[0.92rem] tracking-[0.15em] text-[var(--color-mist)] uppercase">
           AniStream
         </span>
         {!compact && (
@@ -110,9 +110,9 @@ export function SectionHeading({ eyebrow, title, subtitle, action }) {
             {eyebrow}
           </div>
         ) : null}
-        <h2 className="font-[family:var(--font-display)] text-[1.7rem] leading-tight text-[var(--color-ivory)] sm:text-[2rem]">
-          {title}
-        </h2>
+      <h2 className="font-[family:var(--font-display)] text-[1.25rem] leading-tight text-[var(--color-ivory)] sm:text-[1.5rem]">
+        {title}
+      </h2>
         {subtitle ? <p className="mt-2 max-w-2xl text-sm text-[var(--color-muted)]">{subtitle}</p> : null}
       </div>
       {action ? <div className="flex shrink-0 flex-wrap gap-2 self-start sm:self-auto">{action}</div> : null}
@@ -206,18 +206,16 @@ export function MediaCard({ anime, href, compact = false, priority = false, clas
           </span>
         </div>
       </div>
-      <div className="flex flex-1 flex-col gap-2.5 p-3.5 sm:gap-3 sm:p-4">
-        <div className="space-y-2">
-          <h3 className="line-clamp-2 text-[0.95rem] font-medium leading-6 text-[var(--color-ivory)] transition group-hover:text-white sm:text-base">
-            {title}
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {(anime?.genres || []).slice(0, compact ? 2 : 3).map((genre) => (
-              <TagChip key={genre} className="text-[0.62rem]">
-                {genre}
-              </TagChip>
-            ))}
-          </div>
+      <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+        <h3 className="line-clamp-2 text-[0.82rem] font-medium leading-5 text-[var(--color-ivory)] transition group-hover:text-white">
+          {title}
+        </h3>
+        <div className="flex flex-wrap gap-1.5">
+          {(anime?.genres || []).slice(0, compact ? 1 : 2).map((genre) => (
+            <TagChip key={genre} className="text-[0.58rem]">
+              {genre}
+            </TagChip>
+          ))}
         </div>
       </div>
     </Link>
