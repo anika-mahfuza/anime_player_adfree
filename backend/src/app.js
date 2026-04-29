@@ -31,7 +31,7 @@ export async function handleNodeRequest(req, res) {
 
   const handler = routes.get(url.pathname);
   if (!handler) {
-    return sendJson(res, 404, { error: 'Not found' });
+    return sendJson(res, 404, { error: 'Not found', path: url.pathname });
   }
 
   return handler({ req, res, url });

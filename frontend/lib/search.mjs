@@ -184,6 +184,61 @@ function rankOne(queryInfo, media, { allowFuzzy }) {
   return { tier: bestTier, score: bestScore, exact };
 }
 
+// Format priority: TV > MOVIE > OVA > ONA > SPECIAL > MUSIC (lower = preferred)
+const FORMAT_PRIORITY = {
+  'tv': 1, 'tv short': 1,
+  'movie': 2,
+  'ova': 3,
+  'ona': 4,
+  'special': 5,
+  'music': 6,
+};
+
+function getFormatPriority(format) {
+  return FORMAT_PRIORITY[normalizeForCompare(format)] || 99;
+}
+
+// Pick the "main" anime when multiple have the same title
+function pickBestByTitle(mediaList) {
+  const byTitle = new Map();
+
+  for (const media of mediaList) {
+    const normalizedTitle = normalizeForCompare(mediaTitle(media));
+    if (!normalizedTitle) continue;
+
+    if (!byTitle.has(normalizedTitle)) {
+      byTitle.set(normalizedTitle, media);
+      continue;
+    }
+
+    const existing = byTitle.get(normalizedTitle);
+    const existingPriority = getFormatPriority(existing?.format);
+    const newPriority = getFormatPriority(media?.format);
+    const existingScore = toNumber(existing?.meanScore);
+    const newScore = toNumber(media?.meanScore);
+    const existingPop = toNumber(existing?.popularity);
+    const newPop = toNumber(media?.popularity);
+
+    // Pick the better one: prefer TV > ONA, then higher score, then more popular
+    let pickNew = false;
+    if (newPriority < existingPriority) {
+      pickNew = true; // Better format (TV over ONA)
+    } else if (newPriority === existingPriority) {
+      if (newScore > existingScore) {
+        pickNew = true; // Higher rated
+      } else if (newScore === existingScore && newPop > existingPop) {
+        pickNew = true; // More popular
+      }
+    }
+
+    if (pickNew) {
+      byTitle.set(normalizedTitle, media);
+    }
+  }
+
+  return Array.from(byTitle.values());
+}
+
 export function mergeAndRankMedia(queryInfo, primary = [], fallback = []) {
   const merged = new Map();
   [...primary, ...fallback].forEach((media, index) => {
@@ -192,7 +247,9 @@ export function mergeAndRankMedia(queryInfo, primary = [], fallback = []) {
     if (!merged.has(key)) merged.set(key, media);
   });
 
-  const candidates = Array.from(merged.values());
+  // Deduplicate by title - keep only the "main" anime for each title
+  const deduplicated = pickBestByTitle(Array.from(merged.values()));
+  const candidates = deduplicated;
   const strict = candidates.map((media) => ({ media, ...rankOne(queryInfo, media, { allowFuzzy: false }) }));
   const strictRelevantCount = strict.filter((entry) => entry.tier <= 2).length;
   const shouldUseFuzzy = strictRelevantCount < 3;

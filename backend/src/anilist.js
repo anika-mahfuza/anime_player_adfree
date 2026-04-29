@@ -80,7 +80,8 @@ export async function handleAniList({ req, res }) {
       }
     }
 
-    return sendJson(res, response.ok ? 200 : response.status, data, { 'X-Cache': 'MISS' });
+    // Always return 200 from backend; AniList errors are in the response body
+    return sendJson(res, 200, data, { 'X-Cache': 'MISS', 'X-AniList-Status': response.status });
   } catch (error) {
     if (error?.name === 'AbortError') {
       return sendJson(res, 504, { errors: [{ message: `AniList request timed out after ${anilistTimeoutMs}ms` }] });

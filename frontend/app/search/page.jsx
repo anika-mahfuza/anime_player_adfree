@@ -47,27 +47,21 @@ function SearchInner() {
     setLoading(true);
     const startedAt = Date.now();
     try {
-      let aniListResults = [];
-      let aniListTotal = 0;
-
+      // Try AniList first - if it works, use only AniList data
       const data = await anilistRequest(SEARCH_QUERY, { s: queryInfo.canonical, page: 1 }, {
         cacheTtlMs: 60 * 1000,
         key: `search:${queryInfo.normalized}:1`,
       });
       const media = (data?.Page?.media || []).filter((item) => item.id || item.idMal);
-      aniListResults = Array.from(
+      const aniListResults = Array.from(
         new Map(media.map((item, index) => [mediaIdentity(item, index), item])).values()
       );
-      aniListTotal = data?.Page?.pageInfo?.total ?? aniListResults.length;
+      const aniListTotal = data?.Page?.pageInfo?.total ?? aniListResults.length;
 
-      const fallback = await searchJikanAnime(term, {
-        page: 1,
-        limit: 24,
-        key: `search:jikan:${queryInfo.normalized}:1`,
-      });
-      const merged = mergeAndRankMedia(queryInfo, aniListResults, fallback.media || []);
+      // Use only AniList results (no Jikan fallback when AniList succeeds)
+      const merged = mergeAndRankMedia(queryInfo, aniListResults, []);
       setResults(merged.results);
-      setTotal(Math.max(aniListTotal, fallback.total || 0, merged.results.length));
+      setTotal(aniListTotal);
       hydrateMediaWithAniZipEpisodeCounts(merged.results, {
         limit: 12,
         keyPrefix: `search:episodes:${queryInfo.normalized}`,
@@ -76,9 +70,10 @@ function SearchInner() {
         setResults(hydrated);
       }).catch(() => {});
       if (process.env.NODE_ENV !== 'production') {
-        console.debug('[search] doSearch debug', merged.debug);
+        console.debug('[search] AniList success', merged.debug);
       }
     } catch {
+      // AniList failed - fallback to Jikan
       try {
         const fallback = await searchJikanAnime(term, {
           page: 1,
@@ -96,7 +91,7 @@ function SearchInner() {
           setResults(hydrated);
         }).catch(() => {});
         if (process.env.NODE_ENV !== 'production') {
-          console.debug('[search] fallback-only debug', merged.debug);
+          console.debug('[search] Jikan fallback', merged.debug);
         }
       } catch {
         setResults([]);

@@ -320,6 +320,17 @@ function WatchPageContent() {
   const [skipTimes, setSkipTimes] = useState(null);
   const [hasStarted, setHasStarted] = useState(false);
   const [videoDurationSec, setVideoDurationSec] = useState(null);
+  const [episodeSearch, setEpisodeSearch] = useState('');
+
+  const filteredEpisodes = useMemo(() => {
+    const search = episodeSearch.toLowerCase().trim();
+    if (!search) return episodes;
+    return episodes.filter((ep) => {
+      const matchesNumber = String(ep.mal_id).includes(search);
+      const matchesTitle = (ep.title || '').toLowerCase().includes(search);
+      return matchesNumber || matchesTitle;
+    });
+  }, [episodes, episodeSearch]);
 
   const episodeRefs = useRef({});
   const { updateProgress, getProgress } = useWatchProgress();
@@ -774,12 +785,25 @@ function WatchPageContent() {
                 title="Episodes"
                 subtitle={`Episode ${activeEpisode} selected${episodes.length > 0 ? ` - ${episodes.length} total` : ''}`}
               />
-              <div className="mt-5 max-h-[30rem] space-y-2 overflow-y-auto pr-1">
+              <div className="mt-4">
+                <input
+                  type="text"
+                  value={episodeSearch}
+                  onChange={(e) => setEpisodeSearch(e.target.value)}
+                  placeholder="Search episode by number or name..."
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-[var(--color-ivory)] placeholder:text-[var(--color-muted)] focus:outline-none"
+                />
+              </div>
+              <div className="mt-4 max-h-[30rem] space-y-2 overflow-y-auto pr-1">
                 {episodes.length === 0 ? (
                   <div className="rounded-[1.2rem] border border-white/8 bg-white/5 px-4 py-8 text-center text-sm text-[var(--color-muted)]">
                     No episode data available.
                   </div>
-                ) : episodes.map((episode) => (
+                ) : filteredEpisodes.length === 0 ? (
+                  <div className="rounded-[1.2rem] border border-white/8 bg-white/5 px-4 py-8 text-center text-sm text-[var(--color-muted)]">
+                    No episodes match &quot;{episodeSearch}&quot;
+                  </div>
+                ) : filteredEpisodes.map((episode) => (
                   <div key={episode.mal_id} ref={(element) => { episodeRefs.current[episode.mal_id] = element; }}>
                     <EpisodeButton
                       episode={episode}

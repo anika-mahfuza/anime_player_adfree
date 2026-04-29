@@ -44,27 +44,43 @@ export async function fetchAnimeMetadataBatch(ids) {
   const normalizedIds = [...new Set(ids.map((id) => Number.parseInt(id, 10)).filter(Boolean))];
   if (normalizedIds.length === 0) return [];
 
-  const fields = normalizedIds
-    .map((id, index) => `
-      item${index}: Media(id: ${id}, type: ANIME) {
-        id
-        title { romaji english }
-        coverImage { large }
-        episodes
+  const query = `
+    query($in: [Int]) {
+      Page(page: 1, perPage: 50) {
+        media(id_in: $in, type: ANIME) {
+          id
+          title { romaji english }
+          coverImage { large }
+          episodes
+        }
       }
-    `)
-    .join('\n');
+    }
+  `;
 
   try {
-    const data = await anilistRequest(`query {\n${fields}\n}`, {}, {
+    const data = await anilistRequest(query, { in: normalizedIds }, {
       cacheTtlMs: 10 * 60 * 1000,
       key: `anilist:metadata-batch:${normalizedIds.join(',')}`,
     });
 
-    return normalizedIds
-      .map((_, index) => data?.[`item${index}`] || null)
-      .filter(Boolean);
+    const anilistResults = data?.Page?.media || [];
+    
+    // If some IDs weren't found in AniList, they might be Jikan/MAL IDs from a previous fallback
+    const foundIds = new Set(anilistResults.map((item) => item.id));
+    const missingIds = normalizedIds.filter((id) => !foundIds.has(id));
+    
+    if (missingIds.length > 0) {
+      try {
+        const jikanFallback = await fetchJikanAnimeMetadataBatch(missingIds, { cacheTtlMs: 10 * 60 * 1000 });
+        return [...anilistResults, ...jikanFallback];
+      } catch {
+        return anilistResults;
+      }
+    }
+
+    return anilistResults;
   } catch {
+    // If AniList proxy is completely down, try Jikan for everything
     return fetchJikanAnimeMetadataBatch(normalizedIds, {
       cacheTtlMs: 10 * 60 * 1000,
     });

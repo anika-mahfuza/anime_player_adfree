@@ -136,7 +136,10 @@ function AnimeDetailsInner() {
     })
       .then((data) => {
         if (cancelled) return;
-        if (!data?.Media) throw new Error('Anime not found');
+        if (!data?.Media) {
+          // AniList doesn't have this anime - will trigger Jikan fallback in catch block
+          throw new Error('Not found in AniList');
+        }
         setAnime(data.Media);
       })
       .catch(async (nextError) => {
