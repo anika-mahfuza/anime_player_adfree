@@ -126,7 +126,8 @@ async function fetchEmbedSkipTimes(embedUrl) {
   // Navigate the complex JSON structure to extract intro/outro
   const dataArr = props.nodes?.[3]?.data;
   if (!dataArr) {
-    throw new Error('Data array not found in embed response');
+    // No skip time data in this embed (valid case - not all episodes have skip times)
+    return { intro: null, outro: null };
   }
 
   const refs = dataArr[0];
