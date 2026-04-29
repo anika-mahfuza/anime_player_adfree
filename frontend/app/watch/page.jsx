@@ -218,7 +218,7 @@ async function fetchStreamUrl({
   return { streamUrl: payload.streamUrl, subtitles: payload.subtitles || [] };
 }
 
-async function fetchSkipTimes(malId, episode, language = 'sub') {
+async function fetchSkipTimes(malId, episode, language = 'sub', title = '') {
   const normalizedMalId = Number.parseInt(String(malId || ''), 10);
   const normalizedEpisode = Number.parseInt(String(episode || ''), 10);
   if (!Number.isFinite(normalizedMalId) || normalizedMalId <= 0) return null;
@@ -229,6 +229,7 @@ async function fetchSkipTimes(malId, episode, language = 'sub') {
     episode: String(normalizedEpisode),
     lang: language === 'dub' ? 'dub' : 'sub',
   });
+  if (title) query.set('title', title);
 
   const payload = await pacedJsonFetch(apiUrl(`/api/skip-times?${query.toString()}`), undefined, {
     key: `skip-times:${query.toString()}`,
@@ -483,7 +484,8 @@ function WatchPageContent() {
       };
     }
 
-    fetchSkipTimes(anime.idMal, activeEpisode)
+    const titleForSkip = anime?.title?.english || anime?.title?.romaji || '';
+    fetchSkipTimes(anime.idMal, activeEpisode, 'sub', titleForSkip)
       .then((nextSkipTimes) => {
         if (!cancelled) {
           setSkipTimes(nextSkipTimes);
