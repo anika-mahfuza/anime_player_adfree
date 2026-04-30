@@ -318,54 +318,39 @@ function scoreCandidateMetadata(candidate, request) {
   return score;
 }
 
-function pickBestSearchTerms(titles) {
-  const terms = [];
-  const primary = titles[0];
-  if (!primary) return terms;
-
-  const normalized = normalizeSearchText(primary);
-  if (normalized.length > 2) terms.push(normalized);
-
-  const ascii = asciiWords(primary);
-  if (ascii.length > 2 && ascii !== normalized.toLowerCase()) terms.push(ascii);
-
-  const stripped = stripSeasonPart(normalized);
-  if (stripped.length > 2 && stripped !== normalized && stripped !== ascii) terms.push(stripped);
-
-  return uniqueStrings(terms).slice(0, 2);
-}
-
 async function findBestSeriesCandidate(request) {
   const bySlug = new Map();
-  const searchTerms = pickBestSearchTerms(request.titles);
+  const searchTerms = buildSearchTerms(request.titles);
 
   const searchPromises = searchTerms.map(async (term) => {
     try {
       const html = await fetchText(`${anitakuBase}/search.html?keyword=${encodeURIComponent(term)}`);
-      return parseSearchResults(html);
+      return { term, results: parseSearchResults(html) };
     } catch (error) {
       console.warn(`[stream] Search term "${term}" failed:`, error.message);
-      return [];
+      return { term, results: [] };
     }
   });
 
-  const allResults = (await Promise.all(searchPromises)).flat();
+  const searchResponses = await Promise.all(searchPromises);
 
-  for (const result of allResults) {
-    const score =
-      scoreTitleAgainstCandidates(request.titles, [result.title]) +
-      (request.year && result.released
-        ? request.year === result.released
-          ? 15
-          : -Math.min(12, Math.abs(request.year - result.released) * 4)
-        : 0);
+  for (const { results } of searchResponses) {
+    for (const result of results) {
+      const score =
+        scoreTitleAgainstCandidates(request.titles, [result.title]) +
+        (request.year && result.released
+          ? request.year === result.released
+            ? 15
+            : -Math.min(12, Math.abs(request.year - result.released) * 4)
+          : 0);
 
-    const existing = bySlug.get(result.slug);
-    if (!existing || score > existing.searchScore) {
-      bySlug.set(result.slug, {
-        ...result,
-        searchScore: score,
-      });
+      const existing = bySlug.get(result.slug);
+      if (!existing || score > existing.searchScore) {
+        bySlug.set(result.slug, {
+          ...result,
+          searchScore: score,
+        });
+      }
     }
   }
 
