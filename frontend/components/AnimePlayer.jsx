@@ -339,7 +339,9 @@ export default function AnimePlayer({
             hlsRef.current = hls;
 
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              video.play().catch(() => {});
+              video.play().catch((err) => {
+                if (err.name !== 'AbortError') console.warn('[Player] Play failed:', err);
+              });
 
               const levels = hls.levels.filter(l => l.height);
               if (!levels.length) return;
@@ -389,7 +391,9 @@ export default function AnimePlayer({
             });
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = src;
-            video.play().catch(() => {});
+            video.play().catch((err) => {
+              if (err.name !== 'AbortError') console.warn('[Player] Play failed:', err);
+            });
           }
         },
       },

@@ -6,7 +6,7 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
-  allowedDevOrigins: ['192.168.0.100', '192.168.0.101'],
+  allowedDevOrigins: ['192.168.10.35'],
   turbopack: {
     root: path.join(projectRoot, '..'),
   },

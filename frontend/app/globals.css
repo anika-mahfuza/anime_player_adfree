@@ -104,8 +104,8 @@ canvas {
 }
 
 :focus-visible {
-  outline: 2px solid rgba(196, 160, 96, 0.9);
-  outline-offset: 2px;
+  outline: 1px solid rgba(196, 160, 96, 0.9);
+  outline-offset: 0px;
 }
 
 .site-shell {
@@ -186,7 +186,7 @@ canvas {
 .button-ghost {
   color: var(--color-mist);
   border: 1px solid transparent;
-  background: transparent;
+  background: solid;
   padding-inline: 0.8rem;
 }
 

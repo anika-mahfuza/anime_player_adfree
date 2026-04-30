@@ -285,20 +285,19 @@ function EpisodeButton({ episode, active, loading, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-[1.15rem] border px-4 py-3 text-left transition ${active
+      className={`w-full rounded-lg border px-3 py-2 text-left transition ${active
           ? 'border-[rgba(183,82,106,0.4)] bg-[rgba(139,40,61,0.16)] text-[var(--color-ivory)]'
           : 'border-white/8 bg-white/5 text-[var(--color-mist)] hover:bg-white/8'
         }`}
     >
-      <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[rgba(8,10,14,0.45)] text-sm font-semibold">
-          {loading && active ? <RiLoader4Line size={15} className="animate-spin" /> : episode.mal_id}
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-xs font-semibold opacity-70">
+          {loading && active ? <RiLoader4Line size={12} className="animate-spin" /> : `#${episode.mal_id}`}
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{episode.title || `Episode ${episode.mal_id}`}</p>
-          {episode.filler ? <p className="mt-1 text-[0.68rem] uppercase tracking-[0.14em] text-[var(--color-brass)]">Filler</p> : null}
-        </div>
-        {active ? <RiPlayMiniFill size={18} className="text-[var(--color-brass)]" /> : null}
+        <span className="truncate text-sm">
+          {episode.title || `Episode ${episode.mal_id}`}
+        </span>
+        {episode.filler ? <span className="ml-auto text-[0.65rem] uppercase tracking-wider text-[var(--color-brass)]">Filler</span> : null}
       </div>
     </button>
   );
@@ -311,21 +310,25 @@ function SeasonCard({ season, isCurrent }) {
   return (
     <Link
       href={animeHref(season.id)}
-      className={`surface-panel flex items-center gap-3 p-3 ${isCurrent ? '!border-2 !border-[var(--color-brass)] shadow-[0_0_0_1px_rgba(196,160,96,0.2)]' : ''}`}
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition ${
+        isCurrent
+          ? 'border-[rgba(183,82,106,0.4)] bg-[rgba(139,40,61,0.16)] text-[var(--color-ivory)]'
+          : 'border-white/8 bg-white/5 text-[var(--color-mist)] hover:bg-white/8'
+      }`}
     >
       {season.coverImage?.large ? (
-        <img src={season.coverImage.large} alt={title} className="h-16 w-12 rounded-[0.95rem] object-cover" loading="lazy" />
+        <img src={season.coverImage.large} alt={title} className="h-12 w-9 rounded object-cover" loading="lazy" />
       ) : (
-        <div className="flex h-16 w-12 items-center justify-center rounded-[0.95rem] bg-[var(--color-ink)] text-[var(--color-muted)]">
-          <RiTv2Line size={18} />
+        <div className="flex h-12 w-9 items-center justify-center rounded bg-[var(--color-ink)] text-[var(--color-muted)]">
+          <RiTv2Line size={14} />
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-[var(--color-ivory)]">{title}</p>
-        <div className="mt-1 flex flex-wrap gap-2 text-[0.66rem] uppercase tracking-[0.12em] text-[var(--color-muted)]">
+        <p className="truncate text-sm font-medium">{title}</p>
+        <div className="mt-0.5 flex flex-wrap gap-1.5 text-[0.65rem] uppercase tracking-wider text-[var(--color-muted)]">
           <span>{formatRelationType(season.relationType)}</span>
-          {formatLabel ? <span>{formatLabel}</span> : null}
-          {season.seasonYear ? <span>{season.seasonYear}</span> : null}
+          {formatLabel ? <span>• {formatLabel}</span> : null}
+          {season.seasonYear ? <span>• {season.seasonYear}</span> : null}
         </div>
       </div>
     </Link>
@@ -355,6 +358,7 @@ function WatchPageContent() {
   const [activeEpisode, setActiveEpisode] = useState(1);
   const [streamUrl, setStreamUrl] = useState('');
   const [subtitles, setSubtitles] = useState([]);
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
   const [metaLoading, setMetaLoading] = useState(true);
   const [streamLoading, setStreamLoading] = useState(false);
   const [streamError, setStreamError] = useState('');
@@ -740,16 +744,16 @@ function WatchPageContent() {
       </TopNav>
 
       {resumeEpisode > 0 && (resumeEpisode > 1 || resumeTimeForActiveEpisode > 0) ? (
-        <section className="mx-auto max-w-screen-xl px-4 pt-5 sm:px-6">
-          <SurfacePanel className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+        <section className="mx-auto max-w-screen-xl px-4 pt-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-white/5 px-4 py-2.5">
             <div className="flex items-center gap-2 text-sm text-[var(--color-mist)]">
               <RiHistoryLine size={16} className="text-[var(--color-brass)]" />
               {resumeEpisode > 1 ? `Continue from episode ${resumeEpisode}` : 'Resume episode 1'}
             </div>
-            <button onClick={() => setActiveEpisode(resumeEpisode)} className="button-primary">
+            <button onClick={() => setActiveEpisode(resumeEpisode)} className="button-primary px-4 py-1.5 text-sm">
               Resume
             </button>
-          </SurfacePanel>
+          </div>
         </section>
       ) : null}
 
@@ -802,10 +806,22 @@ function WatchPageContent() {
                     </div>
                   </div>
                 ) : (
-                  <AnimePlayer
-                    url={streamUrl}
-                    subtitles={subtitles}
-                    episodeData={{
+                  <>
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-sm text-[var(--color-muted)]">Episode {activeEpisode}</span>
+                      {subtitles.length > 0 && (
+                        <button
+                          onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
+                          className="flex items-center gap-2 rounded-full border border-white/8 bg-white/5 px-3 py-1.5 text-xs font-medium text-[var(--color-mist)] transition hover:bg-white/8"
+                        >
+                          {subtitlesEnabled ? 'Subtitles: ON' : 'Subtitles: OFF'}
+                        </button>
+                      )}
+                    </div>
+                    <AnimePlayer
+                      url={streamUrl}
+                      subtitles={subtitlesEnabled ? subtitles : []}
+                      episodeData={{
                       current: currentEpisodeData,
                       nextEpisode: nextEpisodeData ? { number: nextEpisodeData.mal_id, title: nextEpisodeData.title } : null,
                     }}
@@ -820,6 +836,7 @@ function WatchPageContent() {
                     hasPrevEpisode={activeEpisode > 1}
                     autoPlayNext={true}
                   />
+                  </>
                 )}
               </div>
 
@@ -879,22 +896,21 @@ function WatchPageContent() {
               ) : null}
             </SurfacePanel>
 
-            <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-              <div className="grid gap-5 sm:grid-cols-[8rem_minmax(0,1fr)]">
+            <div className="rounded-lg border border-white/8 bg-white/5 p-4 sm:p-5">
+              <div className="grid gap-4 sm:grid-cols-[8rem_minmax(0,1fr)]">
                 {anime.coverImage?.extraLarge ? (
                   <img
                     src={anime.coverImage.extraLarge}
                     alt={title}
-                    className="mx-auto h-48 w-32 rounded-[1.25rem] border border-white/8 object-cover sm:mx-0 sm:rounded-[1.4rem]"
+                    className="mx-auto h-48 w-32 rounded-lg border border-white/8 object-cover sm:mx-0"
                   />
                 ) : null}
 
                 <div className="text-center sm:text-left">
-                  <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">Episode Context</p>
-                  <h2 className="mt-2 font-[family:var(--font-display)] text-2xl text-[var(--color-ivory)] sm:text-3xl">{title}</h2>
-                  {anime.title?.native ? <p className="mt-2 text-sm text-[var(--color-muted)]">{anime.title.native}</p> : null}
+                  <h2 className="font-[family:var(--font-display)] text-xl text-[var(--color-ivory)] sm:text-2xl">{title}</h2>
+                  {anime.title?.native ? <p className="mt-1 text-sm text-[var(--color-muted)]">{anime.title.native}</p> : null}
 
-                  <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
+                  <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
                     {score ? <MetaPill icon={RiStarFill} accent="var(--color-brass)">{score}</MetaPill> : null}
                     {anime.format ? <MetaPill icon={RiClapperboardLine}>{anime.format.replace(/_/g, ' ')}</MetaPill> : null}
                     {anime.episodes ? <MetaPill icon={RiTv2Line}>{anime.episodes} eps</MetaPill> : null}
@@ -905,13 +921,13 @@ function WatchPageContent() {
                   </div>
 
                   {anime.nextAiringEpisode ? (
-                    <p className="mt-4 text-sm text-[var(--color-brass)]">
+                    <p className="mt-3 text-sm text-[var(--color-brass)]">
                       Episode {anime.nextAiringEpisode.episode} airs on {new Date(anime.nextAiringEpisode.airingAt * 1000).toLocaleDateString()}
                     </p>
                   ) : null}
 
                   {anime.genres?.length ? (
-                    <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
+                    <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
                       {anime.genres.map((genre) => (
                         <TagChip key={genre}>{genre}</TagChip>
                       ))}
@@ -919,8 +935,8 @@ function WatchPageContent() {
                   ) : null}
 
                   {description ? (
-                    <div className="mt-5">
-                      <p className="text-sm leading-7 text-[var(--color-mist)]">
+                    <div className="mt-4">
+                      <p className="text-sm leading-6 text-[var(--color-mist)]">
                         {showFullDescription ? description : descriptionShort}
                       </p>
                       {description.length > 240 ? (
@@ -932,32 +948,31 @@ function WatchPageContent() {
                   ) : null}
                 </div>
               </div>
-            </SurfacePanel>
+            </div>
           </div>
 
           <div className="space-y-6">
-            <SurfacePanel className="overflow-hidden p-5">
-              <SectionHeading
-                eyebrow="Episode Rail"
-                title="Episodes"
-                subtitle={`Episode ${activeEpisode} selected${episodes.length > 0 ? ` - ${episodes.length} total` : ''}`}
-              />
-              <div className="mt-4">
-                <input
-                  type="text"
-                  value={episodeSearch}
-                  onChange={(e) => setEpisodeSearch(e.target.value)}
-                  placeholder="Search episode by number or name..."
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-[var(--color-ivory)] placeholder:text-[var(--color-muted)] focus:outline-none"
-                />
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-[var(--color-ivory)]">Episodes</h2>
+                <span className="text-xs text-[var(--color-muted)]">
+                  {activeEpisode} / {episodes.length}
+                </span>
               </div>
-              <div className="mt-4 max-h-[30rem] space-y-2 overflow-y-auto pr-1">
+              <input
+                type="text"
+                value={episodeSearch}
+                onChange={(e) => setEpisodeSearch(e.target.value)}
+                placeholder="Search episodes..."
+                className="mb-3 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--color-ivory)] placeholder:text-[var(--color-muted)] focus:outline-none"
+              />
+              <div className="max-h-[30rem] space-y-1.5 overflow-y-auto pr-1">
                 {episodes.length === 0 ? (
-                  <div className="rounded-[1.2rem] border border-white/8 bg-white/5 px-4 py-8 text-center text-sm text-[var(--color-muted)]">
+                  <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-6 text-center text-sm text-[var(--color-muted)]">
                     No episode data available.
                   </div>
                 ) : filteredEpisodes.length === 0 ? (
-                  <div className="rounded-[1.2rem] border border-white/8 bg-white/5 px-4 py-8 text-center text-sm text-[var(--color-muted)]">
+                  <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-6 text-center text-sm text-[var(--color-muted)]">
                     No episodes match &quot;{episodeSearch}&quot;
                   </div>
                 ) : filteredEpisodes.map((episode) => (
@@ -973,21 +988,17 @@ function WatchPageContent() {
                   </div>
                 ))}
               </div>
-            </SurfacePanel>
+            </div>
 
             {watchSequence.length > 1 ? (
-              <SurfacePanel className="overflow-hidden p-5">
-                <SectionHeading
-                  eyebrow="Watch Order"
-                  title="Seasons"
-                  subtitle="Main seasons, OVAs, side stories, and related titles."
-                />
-                <div className="mt-5 space-y-3">
+              <div>
+                <h2 className="mb-3 text-sm font-semibold text-[var(--color-ivory)]">Seasons</h2>
+                <div className="max-h-[30rem] space-y-1.5 overflow-y-auto pr-1">
                   {watchSequence.map((item) => (
                     <SeasonCard key={item.id} season={item} isCurrent={item.id === anime.id} />
                   ))}
                 </div>
-              </SurfacePanel>
+              </div>
             ) : null}
           </div>
         </div>

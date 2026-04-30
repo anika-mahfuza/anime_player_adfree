@@ -953,44 +953,29 @@ export default function HomePage() {
         <>
           <HeroSpotlight list={featuredList} />
 
-          <section className="mx-auto max-w-screen-xl px-4 pt-6 sm:px-6">
-            <SurfacePanel className="overflow-hidden p-5 sm:p-6">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                <SectionHeading
-                  eyebrow="Editorial Discovery"
-                  title="A premium anime front page"
-                  subtitle="A curated blend of trending, airing, high-score, and genre-led shelves backed by AniList and resilient fallback data."
-                />
-                <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                  <MetaPill icon={RiSparkling2Fill} accent="var(--color-brass)">{totalCards} picks loaded</MetaPill>
-                  <MetaPill icon={RiTrophyLine}>Source: {provider}</MetaPill>
-                  <MetaPill icon={RiCalendarLine}>Refreshes every 15 min</MetaPill>
-                </div>
-              </div>
-              <p className="mt-3 text-[0.68rem] uppercase tracking-[0.14em] text-[var(--color-muted)]">{fetchDebug}</p>
-
-              <div className="hide-scrollbar mt-5 flex gap-2 overflow-x-auto pb-1 sm:mt-6">
-                <button
-                  onClick={clearTopics}
-                  className={cx('tag-chip whitespace-nowrap', !isFiltering ? '!border-[rgba(196,160,96,0.32)] !bg-[rgba(196,160,96,0.14)] !text-[var(--color-brass)]' : '')}
-                >
-                  All Collections
-                </button>
-                {FILTER_CHIPS.map((chip) => {
-                  const active = activeTopics.includes(chip.key);
-                  return (
-                    <button
-                      key={chip.key}
-                      onClick={() => toggleTopic(chip.key)}
-                      aria-pressed={active}
-                      className={cx('tag-chip whitespace-nowrap', active ? '!border-[rgba(183,82,106,0.42)] !bg-[rgba(139,40,61,0.18)] !text-[var(--color-ivory)]' : '')}
-                    >
-                      {chip.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </SurfacePanel>
+          <section className="mx-auto max-w-screen-xl px-4 pt-4 sm:px-6">
+            <p className="mb-3 text-[0.65rem] uppercase tracking-wider text-[var(--color-muted)]">{fetchDebug}</p>
+            <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
+              <button
+                onClick={clearTopics}
+                className={cx('tag-chip whitespace-nowrap', !isFiltering ? '!border-[rgba(196,160,96,0.32)] !bg-[rgba(196,160,96,0.14)] !text-[var(--color-brass)]' : '')}
+              >
+                All Collections
+              </button>
+              {FILTER_CHIPS.map((chip) => {
+                const active = activeTopics.includes(chip.key);
+                return (
+                  <button
+                    key={chip.key}
+                    onClick={() => toggleTopic(chip.key)}
+                    aria-pressed={active}
+                    className={cx('tag-chip whitespace-nowrap', active ? '!border-[rgba(183,82,106,0.42)] !bg-[rgba(139,40,61,0.18)] !text-[var(--color-ivory)]' : '')}
+                  >
+                    {chip.label}
+                  </button>
+                );
+              })}
+            </div>
           </section>
 
           <ContinueWatchingRow />

@@ -149,14 +149,14 @@ export function StatusBadge({ status, className = '' }) {
 
 export function EmptyState({ icon: Icon = RiCompass3Line, title, description, action }) {
   return (
-    <SurfacePanel className="flex flex-col items-center px-6 py-14 text-center">
+    <div className="flex flex-col items-center px-6 py-14 text-center">
       <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--color-brass)]">
         <Icon size={24} />
       </span>
       <h2 className="font-[family:var(--font-display)] text-[2rem] text-[var(--color-ivory)] sm:text-3xl">{title}</h2>
       {description ? <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--color-muted)]">{description}</p> : null}
       {action ? <div className="mt-7">{action}</div> : null}
-    </SurfacePanel>
+    </div>
   );
 }
 

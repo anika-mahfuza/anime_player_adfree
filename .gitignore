@@ -16,10 +16,10 @@
 /frontend/node_modules/
 /backend/node_modules/
 /backend/.vercel/
-/backend/anitaku_hd1_working/node_modules/
+/backend/omega_scrape_working/node_modules/
 # testing
 /coverage
-/backend/anitaku_hd1_working
+/backend/omega_scrape_working
 # next.js
 /.next/
 /out/

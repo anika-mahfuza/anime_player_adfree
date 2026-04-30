@@ -154,23 +154,16 @@ function SearchInner() {
       </TopNav>
 
       <section className="mx-auto max-w-screen-xl px-4 py-8 sm:px-6 sm:py-10">
-        <SurfacePanel className="mb-8 overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
-          <SectionHeading
-            eyebrow="Search Archive"
-            title={query ? `Results for “${query}”` : 'Search the catalogue'}
-            subtitle={
-              query
-                ? `${total > 0 ? `${total}+ matches loaded` : 'No matches yet'} from the current catalogue feed.`
-                : 'Type a title to explore polished anime cards, details pages, and the full watch flow.'
-            }
-            action={
-              <div className="hidden items-center gap-2 text-sm text-[var(--color-muted)] md:flex">
-                <RiSparkling2Fill size={16} className="text-[var(--color-brass)]" />
-                Premium discovery mode
-              </div>
-            }
-          />
-        </SurfacePanel>
+        {query && (
+          <div className="mb-8">
+            <h2 className="mb-2 text-sm font-semibold text-[var(--color-ivory)]">
+              Results for "{query}"
+            </h2>
+            <p className="text-sm text-[var(--color-muted)]">
+              {total > 0 ? `${total}+ matches loaded` : 'No matches yet'} from the current catalogue feed.
+            </p>
+          </div>
+        )}
 
         {loading ? (
           <MediaGridSkeleton />

@@ -88,25 +88,29 @@ function SequenceCard({ anime, isCurrent = false, index = 0 }) {
   return (
     <Link
       href={animeHref(anime.id)}
-      className={`surface-panel flex items-center gap-4 p-4 ${isCurrent ? '!border-2 !border-[var(--color-brass)] shadow-[0_0_0_1px_rgba(196,160,96,0.2)]' : ''}`}
+      className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition ${
+        isCurrent
+          ? 'border-[rgba(183,82,106,0.4)] bg-[rgba(139,40,61,0.16)] text-[var(--color-ivory)]'
+          : 'border-white/8 bg-white/5 text-[var(--color-mist)] hover:bg-white/8'
+      }`}
     >
       {anime.coverImage?.large ? (
-        <img src={anime.coverImage.large} alt={title} className="h-20 w-14 rounded-[1rem] object-cover" loading="lazy" />
+        <img src={anime.coverImage.large} alt={title} className="h-12 w-9 rounded object-cover" loading="lazy" />
       ) : (
-        <div className="flex h-20 w-14 items-center justify-center rounded-[1rem] bg-[var(--color-ink)] text-[var(--color-muted)]">
-          <RiTv2Line size={22} />
+        <div className="flex h-12 w-9 items-center justify-center rounded bg-[var(--color-ink)] text-[var(--color-muted)]">
+          <RiTv2Line size={14} />
         </div>
       )}
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${isCurrent ? 'border-[var(--color-brass)] bg-[rgba(196,160,96,0.14)] text-[var(--color-ivory)]' : 'border-white/10 bg-white/5 text-[var(--color-mist)]'}`}>
+      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${isCurrent ? 'border-[var(--color-brass)] bg-[rgba(196,160,96,0.14)] text-[var(--color-ivory)]' : 'border-white/10 bg-white/5 text-[var(--color-mist)]'}`}>
         {index + 1}
       </div>
       <div className="min-w-0 flex-1">
-        <p className={`truncate text-sm font-medium ${isCurrent ? 'text-[var(--color-ivory)]' : 'text-[var(--color-mist)]'}`}>{title}</p>
-        <div className="mt-2 flex flex-wrap gap-2 text-[0.68rem] uppercase tracking-[0.12em] text-[var(--color-muted)]">
+        <p className="truncate text-sm font-medium">{title}</p>
+        <div className="mt-0.5 flex flex-wrap gap-1.5 text-[0.65rem] uppercase tracking-wider text-[var(--color-muted)]">
           <span>{relationLabel}</span>
-          {formatLabel ? <span>{formatLabel}</span> : null}
-          {anime.seasonYear ? <span>{anime.seasonYear}</span> : null}
-          {anime.episodes ? <span>{anime.episodes} eps</span> : null}
+          {formatLabel ? <span>• {formatLabel}</span> : null}
+          {anime.seasonYear ? <span>• {anime.seasonYear}</span> : null}
+          {anime.episodes ? <span>• {anime.episodes} eps</span> : null}
         </div>
       </div>
     </Link>
@@ -176,7 +180,7 @@ function AnimeDetailsInner() {
   if (!id) {
     return (
       <main className="site-shell flex min-h-screen items-center justify-center px-4">
-        <SurfacePanel className="px-6 py-5 text-sm text-[var(--color-muted)]">Missing anime id.</SurfacePanel>
+        <div className="rounded-lg border border-white/8 bg-white/5 px-6 py-5 text-sm text-[var(--color-muted)]">Missing anime id.</div>
       </main>
     );
   }
@@ -188,7 +192,7 @@ function AnimeDetailsInner() {
   if (error || !anime) {
     return (
       <main className="site-shell flex min-h-screen items-center justify-center px-4 py-10">
-        <SurfacePanel className="w-full max-w-2xl p-6 sm:p-8">
+        <div className="w-full max-w-2xl rounded-lg border border-white/8 bg-white/5 p-6 sm:p-8">
           <p className="text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-brass)]">Detail Page</p>
           <h1 className="mt-3 font-[family:var(--font-display)] text-3xl text-[var(--color-ivory)] sm:text-4xl">Could not load this anime</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">{error || 'Unknown error'}</p>
@@ -196,7 +200,7 @@ function AnimeDetailsInner() {
             <Link href="/" className="button-primary">Go Home</Link>
             <Link href="/search" className="button-secondary">Search Anime</Link>
           </div>
-        </SurfacePanel>
+        </div>
       </main>
     );
   }
@@ -304,33 +308,25 @@ function AnimeDetailsInner() {
 
       <section className="mx-auto max-w-screen-xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
         {watchSequence.length > 1 ? (
-          <SurfacePanel className="p-5 sm:p-6">
-            <SectionHeading
-              eyebrow="Watch Order"
-              title="Seasons and related entries"
-              subtitle="Main seasons, OVAs, side stories, and sequels in one polished watch-order panel."
-            />
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-[var(--color-ivory)]">Seasons</h2>
+            <div className="max-h-[30rem] space-y-1.5 overflow-y-auto pr-1">
               {watchSequence.map((item, index) => (
                 <SequenceCard key={item.id} anime={item} isCurrent={item.id === anime.id} index={index} />
               ))}
             </div>
-          </SurfacePanel>
+          </div>
         ) : null}
 
         {recommendations.length ? (
-          <SurfacePanel className="p-5 sm:p-6">
-            <SectionHeading
-              eyebrow="Recommended"
-              title="You may also want to watch"
-              subtitle="High-signal recommendations pulled from AniList relations and audience overlap."
-            />
-            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-[var(--color-ivory)]">Recommendations</h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {recommendations.map((item) => (
-                <MediaCard key={item.id} anime={item} />
+                <MediaCard key={item.id} anime={item} compact />
               ))}
             </div>
-          </SurfacePanel>
+          </div>
         ) : null}
       </section>
     </main>
