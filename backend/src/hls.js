@@ -14,14 +14,14 @@ export async function handleHlsProxy({ req, res, url }) {
   }
 
   const targetUrl = url.searchParams.get('url');
-  const referer = url.searchParams.get('ref') || 'https://kwik.si/';
+  const referer = url.searchParams.get('ref') || 'https://vibeplayer.site/';
 
   if (!targetUrl) {
     return sendText(res, 400, 'Missing url param');
   }
 
   const apiBase = getRequestOrigin(req);
-  const refererOrigin = safeOrigin(referer, 'https://kwik.si/');
+  const refererOrigin = safeOrigin(referer, 'https://vibeplayer.site/');
   const isPlaylist = /(\.m3u8|playlist|master)/i.test(targetUrl);
 
   try {
