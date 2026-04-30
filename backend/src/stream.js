@@ -439,7 +439,64 @@ async function getDoodStream(doodUrl) {
   }
 }
 
-export async function handleStream({ req, res, url }) {
+function extractServersByType(html, typeClass) {
+  const servers = [];
+  const blockRegex = new RegExp(
+    `<div\\s+class="server-items\\s+type\\s+${typeClass}"[^>]*>([\\s\\S]*?)<\\/div>`,
+    'i'
+  );
+  const blockMatch = html.match(blockRegex);
+  if (!blockMatch) return servers;
+
+  const blockHtml = blockMatch[1];
+  const linkRegex = /<a[^>]*?data-video="([^"]+)"[^>]*?>\s*<i[^>]*?><\/i>\s*([\w-]+)\s*<span[^>]*>.*?<\/span>\s*<\/a>/gi;
+  let match;
+  while ((match = linkRegex.exec(blockHtml)) !== null) {
+    const embedUrl = match[1];
+    const name = match[2].trim();
+    if (name && embedUrl && !servers.some((s) => s.embedUrl === embedUrl)) {
+      servers.push({ name, embedUrl });
+    }
+  }
+  return servers;
+}
+
+async function resolveEmbedToStreamAndSubtitle(embedUrl) {
+  const html = await fetchText(embedUrl, { Referer: embedUrl });
+  let streamUrl = null;
+  let subtitleUrl = null;
+
+  const masterMatch = html.match(/const\s+src\s*=\s*"([^"]+master\.m3u8[^"]*)"/);
+  if (masterMatch?.[1]) streamUrl = masterMatch[1];
+
+  const subMatch = html.match(/const\s+subtitle\s*=\s*"([^"]*)"/);
+  if (subMatch && subMatch[1] !== '') subtitleUrl = subMatch[1];
+
+  if (!streamUrl) {
+    const directMatch = html.match(/https:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*/i);
+    if (directMatch?.[0]) streamUrl = directMatch[0];
+  }
+
+  if (!streamUrl) {
+    const srcMatch = html.match(/(?:src|data-src)\s*=\s*"([^"]*\.m3u8[^"]*)"/i);
+    if (srcMatch?.[1]) streamUrl = srcMatch[1];
+  }
+
+  if (!streamUrl) {
+    const playerMatch = html.match(/player\.src\([^)]*src\s*:\s*"([^"]+)"/i);
+    if (playerMatch?.[1]) streamUrl = playerMatch[1];
+  }
+
+  return { streamUrl, subtitleUrl };
+}
+
+// kept for backward-compat callers
+async function resolveEmbedToStream(embedUrl) {
+  const result = await resolveEmbedToStreamAndSubtitle(embedUrl);
+  return result.streamUrl;
+}
+
+export async function handleServers({ req, res, url }) {
   if (req.method !== 'GET') {
     return sendJson(res, 405, { error: 'Method not allowed' }, { Allow: 'GET, OPTIONS' });
   }
@@ -457,6 +514,99 @@ export async function handleStream({ req, res, url }) {
 
   if (!title) {
     return sendJson(res, 400, { error: 'Missing param: title' });
+  }
+  if (!Number.isFinite(episode) || episode <= 0) {
+    return sendJson(res, 400, { error: 'Invalid episode' });
+  }
+
+  try {
+    const titles = uniqueStrings([title, ...altTitles]);
+    const request = {
+      titles,
+      primaryTitle: title,
+      episodeNumber: episode,
+      year,
+      format,
+      totalEpisodes,
+      duration,
+    };
+
+    const series = await findBestSeriesCandidate(request);
+    if (!series) {
+      throw new Error(`No matching series found for "${title}"`);
+    }
+
+    const episodeSlug = series.episodeHref || buildFallbackEpisodeUrl(series.slug, episode);
+    const pageHtml = await fetchText(`${anitakuBase}${episodeSlug}`);
+    const hsub = extractServersByType(pageHtml, 'type_HSUB');
+    const sub = extractServersByType(pageHtml, 'type_SUB');
+    const dub = extractServersByType(pageHtml, 'type_DUB');
+
+    if (hsub.length === 0 && sub.length === 0 && dub.length === 0) {
+      return sendJson(res, 404, { error: 'No servers found for this episode' });
+    }
+
+    return sendJson(res, 200, {
+      hsub,
+      sub,
+      dub,
+      resolved: {
+        slug: series.slug,
+        title: series.title,
+        episode,
+      },
+    });
+  } catch (error) {
+    console.error('[servers] Error:', error);
+    return sendJson(res, 500, { error: error.message });
+  }
+}
+
+export async function handleStream({ req, res, url }) {
+  if (req.method !== 'GET') {
+    return sendJson(res, 405, { error: 'Method not allowed' }, { Allow: 'GET, OPTIONS' });
+  }
+
+  const embed = url.searchParams.get('embed')?.trim();
+
+  // ── embed mode: skip search, resolve a single embed directly ──
+  if (embed) {
+    try {
+      const { streamUrl, subtitleUrl } = await resolveEmbedToStreamAndSubtitle(embed);
+      if (!streamUrl) {
+        throw new Error('Could not extract master.m3u8 from embed');
+      }
+
+      const backendOrigin = getRequestOrigin(req);
+      const referer = safeOrigin(embed, 'https://vibeplayer.site/');
+      const proxiedStreamUrl =
+        `${backendOrigin}/api/hls?url=${encodeURIComponent(streamUrl)}` +
+        `&ref=${encodeURIComponent(referer)}`;
+
+      return sendJson(res, 200, {
+        streamUrl: proxiedStreamUrl,
+        subtitles: subtitleUrl ? [{ url: subtitleUrl, name: 'English', type: 'vtt' }] : [],
+      });
+    } catch (error) {
+      console.error('[stream] Embed mode error:', error);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  // ── legacy title-based search mode ──
+  const title = url.searchParams.get('title')?.trim();
+  const episode = Number.parseFloat(url.searchParams.get('episode')?.trim() || '1');
+  const altTitles = (url.searchParams.get('altTitles') || '')
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const year = Number.parseInt(url.searchParams.get('year') || '', 10) || null;
+  const format = normalizeFormat(url.searchParams.get('format'));
+  const totalEpisodes = Number.parseInt(url.searchParams.get('totalEpisodes') || '', 10) || null;
+  const duration = Number.parseInt(url.searchParams.get('duration') || '', 10) || null;
+
+  if (!title) {
+    return sendJson(res, 400, { error: 'Missing param: title (or embed)' });
   }
 
   if (!Number.isFinite(episode) || episode <= 0) {
@@ -481,52 +631,35 @@ export async function handleStream({ req, res, url }) {
     }
 
     const episodeSlug = series.episodeHref || buildFallbackEpisodeUrl(series.slug, episode);
-    const servers = await getVideoServers(episodeSlug);
-    if (!servers.length) {
-      throw new Error('No video servers found');
-    }
+    const pageHtml = await fetchText(`${anitakuBase}${episodeSlug}`);
+    const allServers = [
+      ...extractServersByType(pageHtml, 'type_HSUB'),
+      ...extractServersByType(pageHtml, 'type_SUB'),
+      ...extractServersByType(pageHtml, 'type_DUB'),
+    ];
 
-    const serverPriority = ['streamsb', 'streamshide', 'vibeplayer', 'dood', 'mixdrop'];
-    const sortedServers = [...servers].sort((left, right) => {
-      const leftIndex = serverPriority.findIndex((value) => left.includes(value));
-      const rightIndex = serverPriority.findIndex((value) => right.includes(value));
-      return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
-    });
+    if (!allServers.length) {
+      throw new Error('No servers found');
+    }
 
     let streamUrl = null;
     let referer = 'https://vibeplayer.site/';
-    let subtitleUrl = null;
-    let subtitleLang = 'English';
+    let subtitle = null;
 
-    for (const server of sortedServers) {
-      if (server.includes('streamsb') || server.includes('streamshide')) {
-        streamUrl = await getStreamsbDirect(server);
-        referer = safeOrigin(server, referer);
-      } else if (server.includes('dood')) {
-        streamUrl = await getDoodStream(server);
-        referer = safeOrigin(server, referer);
-      } else if (server.includes('vibeplayer.site') || server.includes('otakuhg.site') || server.includes('otakuvid.online')) {
-        streamUrl = await extractM3u8FromUrl(server);
-        referer = safeOrigin(server, referer);
-      } else if (server.includes('.m3u8')) {
-        streamUrl = server;
-        referer = safeOrigin(server, referer);
-      }
-
-      if (streamUrl) {
-        try {
-          const sUrl = new URL(server);
-          subtitleUrl = sUrl.searchParams.get('sub') || sUrl.searchParams.get('caption_1');
-          if (sUrl.searchParams.get('sub_1')) {
-            subtitleLang = sUrl.searchParams.get('sub_1');
-          }
-        } catch (e) {}
+    for (const server of allServers) {
+      const result = await resolveEmbedToStreamAndSubtitle(server.embedUrl);
+      if (result.streamUrl) {
+        streamUrl = result.streamUrl;
+        referer = safeOrigin(server.embedUrl, referer);
+        if (result.subtitleUrl) {
+          subtitle = { url: result.subtitleUrl, name: 'English', type: 'vtt' };
+        }
         break;
       }
     }
 
     if (!streamUrl) {
-      throw new Error('Could not extract video URL');
+      throw new Error('Could not extract video URL from any server');
     }
 
     const backendOrigin = getRequestOrigin(req);
@@ -536,7 +669,7 @@ export async function handleStream({ req, res, url }) {
 
     return sendJson(res, 200, {
       streamUrl: proxiedStreamUrl,
-      subtitles: subtitleUrl ? [{ url: subtitleUrl, name: subtitleLang, type: 'vtt' }] : [],
+      subtitles: subtitle ? [subtitle] : [],
       resolved: {
         slug: series.slug,
         title: series.title,

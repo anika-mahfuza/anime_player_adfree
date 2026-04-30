@@ -5,7 +5,7 @@ import { handleHlsProxy } from './hls.js';
 import { sendJson, sendNoContent } from './http.js';
 import { handleJikan } from './jikan.js';
 import { handleSkipTimes } from './skip-times.js';
-import { handleStream } from './stream.js';
+import { handleServers, handleStream } from './stream.js';
 import { getRequestOrigin } from './http.js';
 
 const routes = new Map([
@@ -15,6 +15,7 @@ const routes = new Map([
   ['/api/home', handleHome],
   ['/api/hls', handleHlsProxy],
   ['/api/skip-times', handleSkipTimes],
+  ['/api/servers', handleServers],
   ['/api/stream', handleStream],
 ]);
 

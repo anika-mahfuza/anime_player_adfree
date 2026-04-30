@@ -218,6 +218,48 @@ async function fetchStreamUrl({
   return { streamUrl: payload.streamUrl, subtitles: payload.subtitles || [] };
 }
 
+async function fetchHdServers({
+  titles,
+  episode,
+  year,
+  format,
+  totalEpisodes,
+  duration,
+}) {
+  const [primaryTitle, ...restTitles] = titles;
+  const altTitles = restTitles.join('|');
+  const query = new URLSearchParams({
+    title: primaryTitle,
+    episode: String(episode),
+  });
+  if (altTitles) query.set('altTitles', altTitles);
+  if (year) query.set('year', String(year));
+  if (format) query.set('format', format);
+  if (totalEpisodes) query.set('totalEpisodes', String(totalEpisodes));
+  if (duration) query.set('duration', String(duration));
+
+  const payload = await pacedJsonFetch(apiUrl(`/api/servers?${query.toString()}`), undefined, {
+    key: `servers:${query.toString()}`,
+    cacheTtlMs: 60 * 1000,
+  });
+  if (payload.error) throw new Error(payload.error ?? 'Server list fetch failed');
+  return {
+    hsub: payload.hsub || [],
+    sub: payload.sub || [],
+    dub: payload.dub || [],
+  };
+}
+
+async function fetchStreamEmbed(embedUrl) {
+  const query = new URLSearchParams({ embed: embedUrl });
+  const payload = await pacedJsonFetch(apiUrl(`/api/stream?${query.toString()}`), undefined, {
+    key: `stream-embed:${embedUrl}`,
+    cacheTtlMs: 20 * 1000,
+  });
+  if (payload.error) throw new Error(payload.error ?? 'Stream fetch failed');
+  return { streamUrl: payload.streamUrl, subtitles: payload.subtitles || [] };
+}
+
 async function fetchSkipTimes(malId, episode, language = 'sub', title = '') {
   const normalizedMalId = Number.parseInt(String(malId || ''), 10);
   const normalizedEpisode = Number.parseInt(String(episode || ''), 10);
@@ -321,6 +363,12 @@ function WatchPageContent() {
   const [hasStarted, setHasStarted] = useState(false);
   const [videoDurationSec, setVideoDurationSec] = useState(null);
   const [episodeSearch, setEpisodeSearch] = useState('');
+  const [hsubServers, setHsubServers] = useState([]);
+  const [subServers, setSubServers] = useState([]);
+  const [dubServers, setDubServers] = useState([]);
+  const [selectedServerEmbed, setSelectedServerEmbed] = useState('');
+  const [serverLoading, setServerLoading] = useState(false);
+  const lastPlaybackTimeRef = useRef(0);
 
   const filteredEpisodes = useMemo(() => {
     const search = episodeSearch.toLowerCase().trim();
@@ -356,6 +404,11 @@ function WatchPageContent() {
     setStreamUrl('');
     setSubtitles([]);
     setStreamError('');
+    setHsubServers([]);
+    setSubServers([]);
+    setDubServers([]);
+    setSelectedServerEmbed('');
+    setServerLoading(false);
 
     const anilistId = Number.parseInt(id, 10);
 
@@ -421,33 +474,39 @@ function WatchPageContent() {
       });
   }, [id, getProgress, requestedEpisode]);
 
-  const loadStream = useCallback(async (episodeNumber) => {
+  const loadStream = useCallback(async (episodeNumber, embedUrl, serverName) => {
     if (!anime) return;
     setStreamLoading(true);
     setStreamError('');
     try {
-      const titleCandidates = [...new Set([
-        anime?.title?.english,
-        anime?.title?.romaji,
-        anime?.title?.native,
-      ].filter(Boolean).map((title) => title.trim()))];
+      let nextUrl;
+      if (embedUrl) {
+        nextUrl = await fetchStreamEmbed(embedUrl);
+      } else {
+        const titleCandidates = [...new Set([
+          anime?.title?.english,
+          anime?.title?.romaji,
+          anime?.title?.native,
+        ].filter(Boolean).map((title) => title.trim()))];
 
-      if (!titleCandidates.length) {
-        const fallbackTitle = mediaTitle(anime);
-        if (fallbackTitle) titleCandidates.push(fallbackTitle);
+        if (!titleCandidates.length) {
+          const fallbackTitle = mediaTitle(anime);
+          if (fallbackTitle) titleCandidates.push(fallbackTitle);
+        }
+
+        nextUrl = await fetchStreamUrl({
+          titles: titleCandidates,
+          episode: episodeNumber,
+          year: anime?.seasonYear,
+          format: anime?.format,
+          totalEpisodes: anime?.episodes,
+          duration: anime?.duration,
+        });
       }
-
-      const nextUrl = await fetchStreamUrl({
-        titles: titleCandidates,
-        episode: episodeNumber,
-        year: anime?.seasonYear,
-        format: anime?.format,
-        totalEpisodes: anime?.episodes,
-        duration: anime?.duration,
-      });
 
       setStreamUrl(nextUrl.streamUrl);
       setSubtitles(nextUrl.subtitles || []);
+      if (embedUrl) setSelectedServerEmbed(embedUrl);
     } catch (error) {
       setStreamError(error.message);
     } finally {
@@ -459,15 +518,66 @@ function WatchPageContent() {
     setHasStarted(true);
     setStreamUrl('');
     setSubtitles([]);
+    setHsubServers([]);
+    setSubServers([]);
+    setDubServers([]);
+    setSelectedServerEmbed('');
+    setServerLoading(false);
   }, []);
 
   useEffect(() => {
     if (!anime || !hasStarted) return;
-    loadStream(activeEpisode);
-  }, [anime, hasStarted, activeEpisode, loadStream]);
+
+    const loadServers = async () => {
+      setServerLoading(true);
+      setStreamError('');
+      try {
+        const titleCandidates = [...new Set([
+          anime?.title?.english,
+          anime?.title?.romaji,
+          anime?.title?.native,
+        ].filter(Boolean).map((title) => title.trim()))];
+
+        if (!titleCandidates.length) {
+          const fallbackTitle = mediaTitle(anime);
+          if (fallbackTitle) titleCandidates.push(fallbackTitle);
+        }
+
+        const { hsub, sub, dub } = await fetchHdServers({
+          titles: titleCandidates,
+          episode: activeEpisode,
+          year: anime?.seasonYear,
+          format: anime?.format,
+          totalEpisodes: anime?.episodes,
+          duration: anime?.duration,
+        });
+
+        if (!isMounted.current) return;
+        setHsubServers(hsub);
+        setSubServers(sub);
+        setDubServers(dub);
+
+        const firstList = sub.length ? sub : hsub.length ? hsub : dub;
+        if (firstList && firstList.length > 0) {
+          setSelectedServerEmbed(firstList[0].embedUrl);
+          await loadStream(activeEpisode, firstList[0].embedUrl, firstList[0].name);
+        } else {
+          setStreamError('No servers available');
+        }
+      } catch (error) {
+        if (isMounted.current) setStreamError(error.message);
+      } finally {
+        if (isMounted.current) setServerLoading(false);
+      }
+    };
+
+    loadServers();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anime, hasStarted, activeEpisode]);
 
   useEffect(() => {
     setVideoDurationSec(null);
+    lastPlaybackTimeRef.current = 0;
   }, [activeEpisode, streamUrl]);
 
   useEffect(() => {
@@ -537,8 +647,14 @@ function WatchPageContent() {
     if (activeEpisode > 1) setActiveEpisode((previous) => Math.max(1, previous - 1));
   }, [activeEpisode]);
 
+  const handleSelectServer = useCallback((server) => {
+    if (!anime || streamLoading || serverLoading) return;
+    loadStream(activeEpisode, server.embedUrl, server.name);
+  }, [anime, activeEpisode, streamLoading, serverLoading, loadStream]);
+
   const handlePlaybackProgress = useCallback(({ currentTime, duration, ended }) => {
     if (!anime || !activeEpisode) return;
+    lastPlaybackTimeRef.current = Math.max(0, Math.floor(Number(currentTime) || 0));
 
     const existing = getProgress(anime.id) || {};
     const safeCurrent = Math.max(0, Math.floor(Number(currentTime) || 0));
@@ -652,12 +768,23 @@ function WatchPageContent() {
                   <div className="flex aspect-video flex-col items-center justify-center gap-3 bg-[var(--color-ink)] px-4 text-center text-[var(--color-muted)]">
                     <RiAlertLine size={28} className="text-[var(--color-brass)]" />
                     <p className="max-w-md text-sm">{streamError}</p>
-                    <button onClick={() => loadStream(activeEpisode)} className="button-primary">Retry Stream</button>
+                    <button
+                      onClick={() => {
+                        const allServers = [...hsubServers, ...subServers, ...dubServers];
+                        const selected = allServers.find((s) => s.embedUrl === selectedServerEmbed);
+                        if (selected) {
+                          loadStream(activeEpisode, selected.embedUrl, selected.name);
+                        } else {
+                          loadStream(activeEpisode);
+                        }
+                      }}
+                      className="button-primary"
+                    >Retry Stream</button>
                   </div>
-                ) : streamLoading ? (
+                ) : streamLoading || serverLoading ? (
                   <div className="flex aspect-video flex-col items-center justify-center bg-[var(--color-ink)] text-[var(--color-muted)]">
                     <RiLoader4Line size={28} className="animate-spin text-[var(--color-brass)]" />
-                    <p className="mt-3 text-sm">Loading episode...</p>
+                    <p className="mt-3 text-sm">{serverLoading ? 'Finding servers...' : 'Loading episode...'}</p>
                   </div>
                 ) : !streamUrl && !hasStarted ? (
                   <div className="relative flex aspect-video flex-col items-center justify-center overflow-hidden bg-[var(--color-ink)] px-4 text-center">
@@ -685,7 +812,7 @@ function WatchPageContent() {
                     skipTimes={skipTimes}
                     onDurationKnown={handleDurationKnown}
                     onProgress={handlePlaybackProgress}
-                    initialSeekTime={resumeTimeForActiveEpisode}
+                    initialSeekTime={lastPlaybackTimeRef.current > 0 ? lastPlaybackTimeRef.current : resumeTimeForActiveEpisode}
                     episodeDuration={anime.duration || 24}
                     onNextEpisode={handleNextEpisode}
                     onPrevEpisode={handlePrevEpisode}
@@ -695,6 +822,36 @@ function WatchPageContent() {
                   />
                 )}
               </div>
+
+              {hasStarted && (hsubServers.length || subServers.length || dubServers.length) ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {[
+                    { label: 'HSUB', list: hsubServers },
+                    { label: 'SUB', list: subServers },
+                    { label: 'DUB', list: dubServers },
+                  ].map((group) =>
+                    group.list.length > 0 ? (
+                      <div key={group.label} className="flex flex-wrap items-center gap-2">
+                        <span className="text-[0.68rem] uppercase tracking-[0.14em] text-[var(--color-muted)]">{group.label}:</span>
+                        {group.list.map((server, index) => (
+                          <button
+                            key={`${group.label}-${server.name}-${index}`}
+                            onClick={() => handleSelectServer(server)}
+                            disabled={streamLoading || serverLoading}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                              selectedServerEmbed === server.embedUrl
+                                ? 'border-[rgba(183,82,106,0.4)] bg-[rgba(139,40,61,0.16)] text-[var(--color-ivory)]'
+                                : 'border-white/10 bg-white/5 text-[var(--color-mist)] hover:bg-white/10'
+                            } disabled:cursor-not-allowed disabled:opacity-40`}
+                          >
+                            {server.name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              ) : null}
 
               {episodes.length > 1 ? (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
