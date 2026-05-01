@@ -29,6 +29,7 @@ function useCallbackRef(fn) {
 // ── component ─────────────────────────────────────────────────────────────────
 export default function AnimePlayer({
   url,
+  aniwaveStreams = [],
   subtitles = [],
   episodeData,
   skipTimes,
@@ -114,6 +115,10 @@ export default function AnimePlayer({
   const qualityLevelsRef    = useRef([]);
   const selectedQualityRef  = useRef(-1);
   const autoQualityLabelRef = useRef('Auto');
+  const aniwaveStreamsRef   = useRef(aniwaveStreams);
+  const aniwaveQualityRef   = useRef(-1);
+
+  useEffect(() => { aniwaveStreamsRef.current = aniwaveStreams; }, [aniwaveStreams]);
 
   useEffect(() => {
     initialSeekTimeRef.current = initialSeekTime;
@@ -333,7 +338,7 @@ export default function AnimePlayer({
           hlsRef.current = null;
 
           if (Hls.isSupported()) {
-            const hls = new Hls({ enableWorker: true, backBufferLength: 90 });
+            const hls = new Hls();
             hls.loadSource(src);
             hls.attachMedia(video);
             hlsRef.current = hls;
@@ -344,6 +349,82 @@ export default function AnimePlayer({
               });
 
               const levels = hls.levels.filter(l => l.height);
+              const awStreams = aniwaveStreamsRef.current;
+
+              // ── AniWave: multiple single-quality URLs → custom selector ──
+              if (awStreams.length > 1) {
+                const sorted = [...awStreams].sort((a, b) => {
+                  const hA = parseInt(a.quality, 10) || 0;
+                  const hB = parseInt(b.quality, 10) || 0;
+                  return hB - hA; // highest first
+                });
+
+                // Auto = highest quality (index 0), value -1 mirrors anitaku convention
+                const autoLabel = `Auto (${sorted[0].quality})`;
+                const awSelector = [
+                  { html: autoLabel, value: -1, default: true },
+                  ...sorted.map((s, i) => ({
+                    html: s.quality || `${i}`,
+                    value: i,
+                    default: false,
+                  })),
+                ];
+
+                aniwaveQualityRef.current = -1; // start on Auto
+
+                const switchAniwaveQuality = (idx) => {
+                  // Auto → use highest (index 0)
+                  const realIdx = idx === -1 ? 0 : idx;
+                  const target = sorted[realIdx];
+                  if (!target) return;
+
+                  const currentTime = artInstance.currentTime;
+                  const wasPlaying = !artInstance.paused;
+
+                  // Switch HLS source to new quality URL
+                  hlsRef.current?.destroy();
+                  hlsRef.current = null;
+
+                  const newHls = new Hls();
+                  newHls.loadSource(target.url);
+                  newHls.attachMedia(video);
+                  hlsRef.current = newHls;
+
+                  newHls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    if (currentTime > 0) {
+                      video.currentTime = currentTime;
+                    }
+                    if (wasPlaying) {
+                      video.play().catch(() => {});
+                    }
+                  });
+                };
+
+                artInstance.setting.add({
+                  name: 'quality',
+                  html: 'Quality',
+                  tooltip: autoLabel,
+                  selector: awSelector,
+                  onSelect(item) {
+                    const idx = Number(item.value);
+                    aniwaveQualityRef.current = idx;
+                    switchAniwaveQuality(idx);
+
+                    const tooltip = idx === -1 ? autoLabel : (sorted[idx]?.quality || 'Auto');
+                    artInstance.notice.show = tooltip;
+                    artInstance.setting.update({
+                      name: 'quality',
+                      html: 'Quality',
+                      tooltip,
+                      selector: awSelector,
+                    });
+                    return idx === -1 ? autoLabel : item.html;
+                  },
+                });
+                return; // skip HLS-level selector
+              }
+
+              // ── Standard: multi-level master playlist → HLS.js selector ──
               if (!levels.length) return;
 
               qualityLevelsRef.current = levels;
@@ -385,9 +466,8 @@ export default function AnimePlayer({
 
             hls.on(Hls.Events.ERROR, (_, data) => {
               if (!data.fatal) return;
-              if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-              else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-              else { hls.destroy(); hlsRef.current = null; }
+              console.error(`[Player] HLS fatal error: ${data.details}`);
+              artInstance.notice.show = `Stream error: ${data.details || 'playback failed'}`;
             });
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = src;

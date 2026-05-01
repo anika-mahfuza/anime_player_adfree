@@ -353,13 +353,52 @@ function WatchPageContent() {
   const requestedEpisode = Math.max(0, Number.parseInt(searchParams.get('ep') || '', 10) || 0);
   const requestedTime = Math.max(0, Number.parseInt(searchParams.get('t') || '', 10) || 0);
 
+    // Professional cache system for player page
+  const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+  
+  const getCache = useCallback((key) => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (!stored) return null;
+      const { data, expiry } = JSON.parse(stored);
+      if (Date.now() > expiry) {
+        sessionStorage.removeItem(key);
+        return null;
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+  
+  const setCache = useCallback((key, data) => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(key, JSON.stringify({ 
+        data, 
+        expiry: Date.now() + CACHE_TTL 
+      }));
+    } catch {}
+  }, []);
+  
+  const clearCache = useCallback((key) => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.removeItem(key);
+    } catch {}
+  }, []);
+
+  const animeId = searchParams.get('id');
+  const cachedEpisodes = getCache(`watch-episodes-${animeId}`) || [];
+  
   const [anime, setAnime] = useState(null);
-  const [episodes, setEpisodes] = useState([]);
+  const [episodes, setEpisodes] = useState(cachedEpisodes);
   const [activeEpisode, setActiveEpisode] = useState(1);
   const [streamUrl, setStreamUrl] = useState('');
   const [subtitles, setSubtitles] = useState([]);
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
-  const [metaLoading, setMetaLoading] = useState(true);
+  const [metaLoading, setMetaLoading] = useState(!cachedEpisodes.length);
   const [streamLoading, setStreamLoading] = useState(false);
   const [streamError, setStreamError] = useState('');
   const [showFullDescription, setShowFullDescription] = useState(false);
@@ -372,6 +411,9 @@ function WatchPageContent() {
   const [dubServers, setDubServers] = useState([]);
   const [selectedServerEmbed, setSelectedServerEmbed] = useState('');
   const [serverLoading, setServerLoading] = useState(false);
+  const [activeSource, setActiveSource] = useState('anitaku');
+  const [aniwaveLoading, setAniwaveLoading] = useState(false);
+  const [aniwaveStreams, setAniwaveStreams] = useState([]);
   const lastPlaybackTimeRef = useRef(0);
 
   const filteredEpisodes = useMemo(() => {
@@ -400,7 +442,13 @@ function WatchPageContent() {
     if (!id) return;
     const startedAt = Date.now();
     restoreReadyRef.current = false;
-    setMetaLoading(true);
+    
+    // If we have cached episodes, don't show loading state
+    const hasCachedEpisodes = getCache(`watch-episodes-${id}`);
+    if (!hasCachedEpisodes) {
+      setMetaLoading(true);
+    }
+    
     setAnime(null);
     setEpisodes([]);
     setActiveEpisode(1);
@@ -413,6 +461,11 @@ function WatchPageContent() {
     setDubServers([]);
     setSelectedServerEmbed('');
     setServerLoading(false);
+    setActiveSource('anitaku');
+    setAniwaveLoading(false);
+    
+    // Clear cache when anime changes
+    clearCache(`watch-episodes-${id}`);
 
     const anilistId = Number.parseInt(id, 10);
 
@@ -431,7 +484,17 @@ function WatchPageContent() {
       setAnime(media);
       setActiveEpisode(initialEpisode);
 
-      setEpisodes(buildFallbackEpisodes(fallbackEpisodeCount));
+      // Check episodes cache first
+      const cachedEpisodes = getCache(`watch-episodes-${id}`);
+      if (cachedEpisodes && cachedEpisodes.length > 0) {
+        setEpisodes(cachedEpisodes);
+        setMetaLoading(false); // Stop loading immediately if we have cache
+        if (cachedEpisodes.length > 0) {
+          setActiveEpisode((previous) => Math.min(previous, cachedEpisodes.length));
+        }
+      } else {
+        setEpisodes(buildFallbackEpisodes(fallbackEpisodeCount));
+      }
 
       fetchPreferredEpisodes({
         anilistId,
@@ -442,6 +505,7 @@ function WatchPageContent() {
         .then((episodeData) => {
           if (!isMounted.current) return;
           setEpisodes(episodeData);
+          setCache(`watch-episodes-${id}`, episodeData);
           if (episodeData.length > 0) {
             setActiveEpisode((previous) => Math.min(previous, episodeData.length));
           }
@@ -518,19 +582,80 @@ function WatchPageContent() {
     }
   }, [anime]);
 
+  const loadAniwaveStream = useCallback(async (episodeNumber) => {
+    if (!anime?.idMal) return;
+    setAniwaveLoading(true);
+    setStreamError('');
+    try {
+      const query = new URLSearchParams({
+        malId: String(anime.idMal),
+        episode: String(episodeNumber),
+        lang: 'sub',
+      });
+      const payload = await pacedJsonFetch(apiUrl(`/api/aniwave-stream?${query.toString()}`), undefined, {
+        key: `aniwave-stream:${query.toString()}`,
+        cacheTtlMs: 20 * 1000,
+      });
+      if (payload.error) throw new Error(payload.error);
+
+      const streams = payload.streams || [];
+      if (!streams.length) throw new Error('No streams found on AniWave');
+
+      setStreamUrl(streams[0].url);
+      setAniwaveStreams(streams);
+      setSubtitles([]);
+      setActiveSource('aniwave');
+      setSelectedServerEmbed('');
+      setHsubServers([]);
+      setSubServers([]);
+      setDubServers([]);
+
+      if (payload.intro?.end > 0 || payload.outro?.end > 0) {
+        setSkipTimes({
+          intro: payload.intro?.end > 0 ? { startTime: payload.intro.start, endTime: payload.intro.end } : null,
+          outro: payload.outro?.end > 0 ? { startTime: payload.outro.start, endTime: payload.outro.end } : null,
+        });
+      }
+    } catch (error) {
+      setStreamError(error.message);
+    } finally {
+      setAniwaveLoading(false);
+    }
+  }, [anime]);
+
+  const handleSwitchSource = useCallback(() => {
+    if (aniwaveLoading || streamLoading || serverLoading) return;
+    if (activeSource === 'anitaku') {
+      loadAniwaveStream(activeEpisode);
+    } else {
+      setActiveSource('anitaku');
+      setStreamUrl('');
+      setAniwaveStreams([]);
+      setSubtitles([]);
+      setSkipTimes(null);
+      setHsubServers([]);
+      setSubServers([]);
+      setDubServers([]);
+      setSelectedServerEmbed('');
+    }
+  }, [activeSource, activeEpisode, aniwaveLoading, streamLoading, serverLoading, loadAniwaveStream]);
+
   const handleStartWatching = useCallback(() => {
     setHasStarted(true);
     setStreamUrl('');
+    setAniwaveStreams([]);
     setSubtitles([]);
     setHsubServers([]);
     setSubServers([]);
     setDubServers([]);
     setSelectedServerEmbed('');
     setServerLoading(false);
+    setActiveSource('anitaku');
   }, []);
 
   useEffect(() => {
     if (!anime || !hasStarted) return;
+    if (activeSource === 'aniwave') return; // AniWave handles its own loading
 
     const loadServers = async () => {
       setServerLoading(true);
@@ -577,7 +702,7 @@ function WatchPageContent() {
 
     loadServers();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anime, hasStarted, activeEpisode]);
+  }, [anime, hasStarted, activeEpisode, activeSource]);
 
   useEffect(() => {
     setVideoDurationSec(null);
@@ -598,6 +723,14 @@ function WatchPageContent() {
   useEffect(() => {
     setSkipTimes(null);
   }, [anime?.id, activeEpisode]);
+
+  // When episode changes and source is aniwave, reload from aniwave
+  useEffect(() => {
+    if (activeSource === 'aniwave' && anime?.idMal && hasStarted) {
+      loadAniwaveStream(activeEpisode);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEpisode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -768,6 +901,27 @@ function WatchPageContent() {
               ) : null}
 
               <div className="relative overflow-hidden">
+                {/* Always-visible source buttons */}
+                {anime.idMal && (
+                  <div className="mb-3 flex justify-end">
+                    <div className="flex rounded-full border border-[rgba(196,160,96,0.24)] overflow-hidden text-xs font-medium">
+                      <button
+                        onClick={() => { if (activeSource !== 'anitaku') handleSwitchSource(); }}
+                        disabled={aniwaveLoading || streamLoading || serverLoading}
+                        className={`px-3 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-40 ${activeSource === 'anitaku' ? 'bg-[rgba(196,160,96,0.3)] text-[var(--color-brass)]' : 'bg-transparent text-[var(--color-muted)] hover:bg-[rgba(196,160,96,0.12)]'}`}
+                      >
+                        Anitaku
+                      </button>
+                      <button
+                        onClick={() => { if (activeSource !== 'aniwave') handleSwitchSource(); }}
+                        disabled={aniwaveLoading || streamLoading || serverLoading}
+                        className={`px-3 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-40 ${activeSource === 'aniwave' ? 'bg-[rgba(196,160,96,0.3)] text-[var(--color-brass)]' : 'bg-transparent text-[var(--color-muted)] hover:bg-[rgba(196,160,96,0.12)]'}`}
+                      >
+                        AniWave
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {streamError ? (
                   <div className="flex aspect-video flex-col items-center justify-center gap-3 bg-[var(--color-ink)] px-4 text-center text-[var(--color-muted)]">
                     <RiAlertLine size={28} className="text-[var(--color-brass)]" />
@@ -785,10 +939,10 @@ function WatchPageContent() {
                       className="button-primary"
                     >Retry Stream</button>
                   </div>
-                ) : streamLoading || serverLoading ? (
+                ) : streamLoading || serverLoading || aniwaveLoading ? (
                   <div className="flex aspect-video flex-col items-center justify-center bg-[var(--color-ink)] text-[var(--color-muted)]">
                     <RiLoader4Line size={28} className="animate-spin text-[var(--color-brass)]" />
-                    <p className="mt-3 text-sm">{serverLoading ? 'Finding servers...' : 'Loading episode...'}</p>
+                    <p className="mt-3 text-sm">{aniwaveLoading ? 'Loading from AniWave...' : serverLoading ? 'Finding servers...' : 'Loading episode...'}</p>
                   </div>
                 ) : !streamUrl && !hasStarted ? (
                   <div className="relative flex aspect-video flex-col items-center justify-center overflow-hidden bg-[var(--color-ink)] px-4 text-center">
@@ -809,17 +963,10 @@ function WatchPageContent() {
                   <>
                     <div className="mb-3 flex items-center justify-between">
                       <span className="text-sm text-[var(--color-muted)]">Episode {activeEpisode}</span>
-                      {subtitles.length > 0 && (
-                        <button
-                          onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
-                          className="flex items-center gap-2 rounded-full border border-white/8 bg-white/5 px-3 py-1.5 text-xs font-medium text-[var(--color-mist)] transition hover:bg-white/8"
-                        >
-                          {subtitlesEnabled ? 'Subtitles: ON' : 'Subtitles: OFF'}
-                        </button>
-                      )}
                     </div>
                     <AnimePlayer
                       url={streamUrl}
+                      aniwaveStreams={aniwaveStreams}
                       subtitles={subtitlesEnabled ? subtitles : []}
                       episodeData={{
                       current: currentEpisodeData,

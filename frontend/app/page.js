@@ -759,10 +759,13 @@ export default function HomePage() {
 
     setSecondaryLoading(true);
     try {
-      const payload = await anilistRequest(SECONDARY_QUERY, {}, {
-        cacheTtlMs: HOME_CACHE_TTL_MS,
-        key: 'home:secondary',
-      });
+      const payload = await Promise.race([
+        anilistRequest(SECONDARY_QUERY, {}, {
+          cacheTtlMs: HOME_CACHE_TTL_MS,
+          key: 'home:secondary',
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('AniList timeout')), 10000)),
+      ]);
       setSecondary(payload);
       setCache(SECONDARY_CACHE_KEY, payload);
       setFetchDebug((current) => (current.startsWith('homepage source: AniList') ? current : 'homepage source: AniList live'));
@@ -808,10 +811,13 @@ export default function HomePage() {
 
       if (!cachedCritical) {
         try {
-          const primary = await anilistRequest(CRITICAL_QUERY, {}, {
-            cacheTtlMs: HOME_CACHE_TTL_MS,
-            key: 'home:critical',
-          });
+          const primary = await Promise.race([
+            anilistRequest(CRITICAL_QUERY, {}, {
+              cacheTtlMs: HOME_CACHE_TTL_MS,
+              key: 'home:critical',
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('AniList timeout')), 10000)),
+          ]);
           const payload = { ...primary, provider: 'anilist' };
           if (!cancelled) {
             setData(payload);
@@ -954,7 +960,19 @@ export default function HomePage() {
           <HeroSpotlight list={featuredList} />
 
           <section className="mx-auto max-w-screen-xl px-4 pt-4 sm:px-6">
-            <p className="mb-3 text-[0.65rem] uppercase tracking-wider text-[var(--color-muted)]">{fetchDebug}</p>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[0.65rem] uppercase tracking-wider text-[var(--color-muted)]">{fetchDebug}</p>
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem(CRITICAL_CACHE_KEY);
+                  sessionStorage.removeItem(SECONDARY_CACHE_KEY);
+                  window.location.reload();
+                }}
+                className="text-[0.65rem] uppercase tracking-wider text-[var(--color-brass)] hover:text-[var(--color-ivory)] transition"
+              >
+                Force Refresh
+              </button>
+            </div>
             <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
               <button
                 onClick={clearTopics}

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -18,6 +18,7 @@ import { MediaCard, MetaPill, QuickActionLink, SectionHeading, StatusBadge, Surf
 import { AnimeDetailsSkeleton } from '@/components/skeletons';
 import { getWatchSequence, useWatchProgress } from '@/hooks/useWatchProgress';
 import { anilistRequest, ensureMinimumDelay } from '@/lib/anilist';
+import { fetchAniZipEpisodes } from '@/lib/anizip';
 import { fetchJikanAnimeDetails } from '@/lib/jikan';
 import { formatRelationType, formatSeason, mediaTitle, stripHtml } from '@/lib/media';
 import { animeHref, watchHref } from '@/lib/routes';
@@ -117,22 +118,99 @@ function SequenceCard({ anime, isCurrent = false, index = 0 }) {
   );
 }
 
+function EpisodeButton({ episode, active, loading, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full rounded-lg border px-3 py-2 text-left transition ${active
+          ? 'border-[rgba(183,82,106,0.4)] bg-[rgba(139,40,61,0.16)] text-[var(--color-ivory)]'
+          : 'border-white/8 bg-white/5 text-[var(--color-mist)] hover:bg-white/8'
+        }`}
+    >
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-xs font-semibold opacity-70">
+          {loading && active ? <RiLoader4Line size={12} className="animate-spin" /> : `#${episode.mal_id}`}
+        </span>
+        <span className="truncate text-sm">
+          {episode.title || `Episode ${episode.mal_id}`}
+        </span>
+        {episode.filler ? <span className="ml-auto text-[0.65rem] uppercase tracking-wider text-[var(--color-brass)]">Filler</span> : null}
+      </div>
+    </button>
+  );
+}
+
+// Professional cache system for anime details page
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+function getCache(key) {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = sessionStorage.getItem(key);
+    if (!stored) return null;
+    const { data, expiry } = JSON.parse(stored);
+    if (Date.now() > expiry) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function setCache(key, data) {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ 
+      data, 
+      expiry: Date.now() + CACHE_TTL 
+    }));
+  } catch {}
+}
+
+function clearCache(key) {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(key);
+  } catch {}
+}
+
 function AnimeDetailsInner() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
-  const [anime, setAnime] = useState(null);
-  const [loading, setLoading] = useState(true);
+  
+  // Initialize from cache for instant load
+  const cachedAnime = getCache(`anime-details-${id}`);
+  const cachedEpisodes = getCache(`anime-details-episodes-${id}`) || [];
+  const [anime, setAnime] = useState(cachedAnime);
+  const [episodes, setEpisodes] = useState(cachedEpisodes);
+  const [episodesLoading, setEpisodesLoading] = useState(false);
+  const [loading, setLoading] = useState(!cachedAnime); // Only loading if no cached data
   const [error, setError] = useState('');
   const { getProgress } = useWatchProgress();
 
   useEffect(() => {
     if (!id) return;
 
+    // Check cache first (already done in useState, but ensure for edge cases)
+    const cached = getCache(`anime-details-${id}`);
+    if (cached && !anime) {
+      setAnime(cached);
+      setLoading(false);
+      return; // Don't refetch if cache is valid
+    }
+    
+    // If we already have data from cache or state, don't refetch
+    if (anime) {
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     const startedAt = Date.now();
     setLoading(true);
     setError('');
-    setAnime(null);
 
     anilistRequest(ANIME_DETAILS_QUERY, { id: Number.parseInt(id, 10) }, {
       cacheTtlMs: 5 * 60 * 1000,
@@ -141,10 +219,10 @@ function AnimeDetailsInner() {
       .then((data) => {
         if (cancelled) return;
         if (!data?.Media) {
-          // AniList doesn't have this anime - will trigger Jikan fallback in catch block
           throw new Error('Not found in AniList');
         }
         setAnime(data.Media);
+        setCache(`anime-details-${id}`, data.Media);
       })
       .catch(async (nextError) => {
         try {
@@ -153,6 +231,7 @@ function AnimeDetailsInner() {
           });
           if (cancelled) return;
           setAnime(fallback);
+          setCache(`anime-details-${id}`, fallback);
         } catch {
           if (cancelled) return;
           setError(nextError.message || 'Failed to load anime details');
@@ -167,6 +246,76 @@ function AnimeDetailsInner() {
       cancelled = true;
     };
   }, [id]);
+
+  // Clear cache when anime changes
+  useEffect(() => {
+    if (!id) return;
+    clearCache(`anime-details-${id}`);
+    clearCache(`anime-details-episodes-${id}`);
+  }, [id]);
+
+  // Helper function to filter aired episodes (same as player page)
+  const filterAiredEpisodes = useCallback((episodeData) => {
+    if (!anime?.status || anime.status !== 'RELEASING') return episodeData;
+    
+    const highestReleasedFromDates = episodeData.reduce(
+      (highest, episode) => {
+        if (!episode?.airDate) return highest;
+        const airDate = new Date(episode.airDate);
+        return airDate <= new Date() ? Math.max(highest, episode.mal_id) : highest;
+      },
+      0,
+    );
+    const highestReleasedFromAniList = Number(anime?.nextAiringEpisode?.episode) > 1
+      ? Number(anime.nextAiringEpisode.episode) - 1
+      : 0;
+    const highestReleased = Math.max(highestReleasedFromDates, highestReleasedFromAniList);
+
+    if (highestReleased <= 0) return episodeData;
+    return episodeData.filter((episode) => episode.mal_id <= highestReleased);
+  }, [anime]);
+
+  useEffect(() => {
+    if (!anime?.id && !anime?.idMal) return;
+
+    // Check episodes cache first
+    const cachedEpisodes = getCache(`anime-details-episodes-${id}`);
+    if (cachedEpisodes && cachedEpisodes.length > 0) {
+      const airedEpisodes = filterAiredEpisodes(cachedEpisodes);
+      setEpisodes(airedEpisodes);
+      return; // Don't refetch if cache is valid
+    }
+
+    let cancelled = false;
+    setEpisodesLoading(true);
+
+    fetchAniZipEpisodes(
+      { anilistId: anime.id, malId: anime.idMal },
+      {
+        cacheTtlMs: 10 * 60 * 1000,
+        key: `anime-details-episodes:${anime.id || anime.idMal}`,
+      }
+    )
+      .then((episodeData) => {
+        if (cancelled) return;
+        const airedEpisodes = filterAiredEpisodes(episodeData);
+        setEpisodes(airedEpisodes);
+        setCache(`anime-details-episodes-${id}`, airedEpisodes);
+      })
+      .catch((err) => {
+        console.warn('[AnimeDetails] Failed to load episodes:', err);
+        if (cancelled) return;
+        setEpisodes([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setEpisodesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [anime, filterAiredEpisodes, id]);
 
   const watchSequence = useMemo(() => getWatchSequence(anime, anime?.relations), [anime]);
   const recommendations = useMemo(() => {
@@ -307,6 +456,44 @@ function AnimeDetailsInner() {
       </section>
 
       <section className="mx-auto max-w-screen-xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
+        {episodes.length > 0 && (
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-[var(--color-ivory)]">Episodes</h2>
+            {episodesLoading ? (
+              <div className="max-h-[20rem] space-y-1.5 overflow-y-auto pr-1">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <div key={index} className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-6 rounded bg-white/10" />
+                      <div className="h-3 w-24 rounded bg-white/10" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="max-h-[20rem] space-y-1.5 overflow-y-auto pr-1">
+                {episodes.map((episode) => {
+                  const saved = getProgress(anime.id);
+                  const isCurrent = saved?.episode === episode.mal_id;
+                  
+                  return (
+                    <Link key={episode.mal_id} href={watchHref(anime.id, { episode: episode.mal_id })}>
+                      <EpisodeButton
+                        episode={episode}
+                        active={isCurrent}
+                        loading={false}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.href = watchHref(anime.id, { episode: episode.mal_id });
+                        }}
+                      />
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         {watchSequence.length > 1 ? (
           <div>
             <h2 className="mb-3 text-sm font-semibold text-[var(--color-ivory)]">Seasons</h2>
