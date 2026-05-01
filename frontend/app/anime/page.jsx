@@ -375,13 +375,17 @@ function AnimeDetailsInner() {
       <section className="relative overflow-hidden border-b border-white/6">
         <div className="absolute inset-0">
           {heroBackdrop ? (
-            <img
-              src={heroBackdrop}
-              alt=""
-              className={hasBanner
-                ? 'h-full w-full object-cover object-center opacity-70'
-                : 'h-full w-full object-contain object-center opacity-35 sm:object-cover sm:opacity-55'}
-            />
+            <div className="relative h-96 overflow-hidden sm:h-[28rem]">
+              <div className="absolute inset-0">
+                <img
+                  src={heroBackdrop}
+                  alt={title}
+                  className="h-full w-full object-cover"
+                  fetchPriority="high"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[var(--color-obsidian)] via-[var(--color-obsidian)]/60" />
+              </div>
+            </div>
           ) : null}
           <div className="absolute inset-0 bg-[linear-gradient(92deg,rgba(8,10,14,0.94)_0%,rgba(8,10,14,0.84)_38%,rgba(8,10,14,0.74)_100%)]" />
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,10,14,0.35)_0%,rgba(8,10,14,0.72)_100%)]" />

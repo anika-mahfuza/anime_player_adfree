@@ -896,7 +896,12 @@ function WatchPageContent() {
             <SurfacePanel className="overflow-hidden p-3 sm:p-5">
               {anime.bannerImage ? (
                 <div className="mb-4 h-24 overflow-hidden rounded-[1.1rem] border border-white/8 sm:h-36 sm:rounded-[1.35rem]">
-                  <img src={anime.bannerImage} alt="" className="h-full w-full object-cover" />
+                  <img 
+                    src={anime.bannerImage} 
+                    alt="" 
+                    className="h-full w-full object-cover" 
+                    fetchPriority="high"
+                  />
                 </div>
               ) : null}
 
