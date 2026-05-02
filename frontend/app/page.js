@@ -566,7 +566,16 @@ function HeroSpotlight({ list }) {
     <section className="mx-auto max-w-screen-xl px-4 pt-7 sm:px-6 sm:pt-8">
       <SurfacePanel className="relative overflow-hidden px-0 py-0">
         <div className="relative min-h-[28rem] overflow-hidden rounded-[1.35rem] sm:min-h-[34rem] sm:rounded-[1.75rem]">
-          {backdrop ? <img src={backdrop} alt={title} className="absolute inset-0 h-full w-full object-cover" /> : null}
+          {backdrop ? (
+            <img
+              src={backdrop}
+              alt={title}
+              className="absolute inset-0 h-full w-full object-cover"
+              fetchPriority="high"
+              loading="eager"
+              decoding="async"
+            />
+          ) : null}
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(8,10,14,0.92)_0%,rgba(8,10,14,0.72)_46%,rgba(8,10,14,0.45)_100%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_16%,rgba(196,160,96,0.14),transparent_24%),radial-gradient(circle_at_80%_18%,rgba(139,40,61,0.18),transparent_26%)]" />
 

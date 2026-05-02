@@ -28,7 +28,7 @@ export function BrandMark({ compact = false }) {
   return (
     <Link href="/" className="inline-flex max-w-full items-center gap-2.5 sm:gap-3">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[1.15rem] bg-[linear-gradient(145deg,rgba(139,40,61,0.95),rgba(84,24,37,0.95))] shadow-[0_16px_40px_rgba(48,13,21,0.55)] sm:h-11 sm:w-11 sm:rounded-[1.35rem]">
-        <Image src="/logo.png" alt="AniStream" width={88} height={88} className="h-full w-full object-contain" />
+        <Image src="/logo-88.webp" alt="AniStream" width={88} height={88} className="h-full w-full object-contain" />
       </div>
       <span className="min-w-0 flex flex-col leading-none">
         <span className="truncate font-[family:var(--font-display)] text-[1rem] tracking-[0.18em] text-[var(--color-mist)] uppercase sm:text-[1.15rem] sm:tracking-[0.2em]">
@@ -162,7 +162,7 @@ export function EmptyState({ icon: Icon = RiCompass3Line, title, description, ac
 
 export function MediaCard({ anime, href, compact = false, priority = false, className = '' }) {
   const title = mediaTitle(anime);
-  const image = anime?.coverImage?.extraLarge ?? anime?.coverImage?.large ?? anime?.coverImage?.medium;
+  const image = anime?.coverImage?.large ?? anime?.coverImage?.medium ?? anime?.coverImage?.extraLarge;
   const score = anime?.meanScore ? (anime.meanScore / 10).toFixed(1) : null;
   const episodes = anime?.nextAiringEpisode?.episode
     ? `EP ${anime.nextAiringEpisode.episode - 1}`

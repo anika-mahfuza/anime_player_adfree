@@ -38,7 +38,11 @@ function MediaCardSkeleton({ className = '' }) {
   return (
     <div className={`media-card overflow-hidden ${className}`.trim()}>
       <div className="media-card-art">
-        <Skeleton className="h-full w-full" />
+        <Skeleton
+          inline
+          containerClassName="block h-full w-full leading-none"
+          className="block h-full w-full"
+        />
         {/* Top overlay with score and episodes */}
         <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 p-2.5 sm:p-3">
           <SkeletonBlock className="block w-12" height={24} borderRadius={12} />
@@ -71,7 +75,11 @@ function ContinueCardSkeleton({ className = '' }) {
   return (
     <div className={`media-card overflow-hidden ${className}`.trim()}>
       <div className="media-card-art">
-        <Skeleton className="h-full w-full" />
+        <Skeleton
+          inline
+          containerClassName="block h-full w-full leading-none"
+          className="block h-full w-full"
+        />
       </div>
       <div className="space-y-3 p-3.5 sm:p-4">
         <SkeletonBlock className="block max-w-[75%]" height={18} />
@@ -159,15 +167,6 @@ export function HomePageSkeleton() {
         <div className="flex gap-2 overflow-hidden">
           {Array.from({ length: 6 }).map((_, index) => (
             <SkeletonBlock key={index} className="block w-24" height={30} borderRadius={999} />
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-screen-xl px-4 pt-6 sm:px-6">
-        <PlaceholderSectionHeading />
-        <div className="flex gap-3 overflow-hidden sm:gap-4">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <ContinueCardSkeleton key={index} className="rail-card" />
           ))}
         </div>
       </section>

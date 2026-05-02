@@ -23,19 +23,13 @@ export const metadata = {
 // Performance optimization: Resource hints for faster loading
 export default function RootLayout({ children }) {
   return (
-    <>
-      {/* Preconnect hints for external resources */}
-      <link rel="preconnect" href="https://s4.anilist.co" />
-      <link rel="preconnect" href="https://api.jikan.moe" />
-      <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
-      <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
-      
-      <html lang="en" className={`${displayFont.variable} ${bodyFont.variable} h-full antialiased`}>
-        <body className="min-h-full bg-[var(--color-obsidian)] text-[var(--color-mist)]" suppressHydrationWarning>
-          <AppSkeletonTheme>{children}</AppSkeletonTheme>
-        </body>
-      </html>
-    </>
+    <html lang="en" className={`${displayFont.variable} ${bodyFont.variable} h-full antialiased`}>
+      <head>
+        <link rel="preconnect" href="https://s4.anilist.co" />
+      </head>
+      <body className="min-h-full bg-[var(--color-obsidian)] text-[var(--color-mist)]" suppressHydrationWarning>
+        <AppSkeletonTheme>{children}</AppSkeletonTheme>
+      </body>
+    </html>
   );
 }
-

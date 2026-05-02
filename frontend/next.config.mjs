@@ -7,6 +7,9 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   output: 'export',
   allowedDevOrigins: ['192.168.10.35'],
+  experimental: {
+    optimizePackageImports: ['@remixicon/react'],
+  },
   turbopack: {
     root: path.join(projectRoot, '..'),
   },

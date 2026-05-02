@@ -70,7 +70,7 @@ function normalizeContinueItem(meta, data) {
 
 export function useContinueWatching(limit = 6) {
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const loadedIds = useRef(new Set());
@@ -138,9 +138,11 @@ export function useContinueWatching(limit = 6) {
     const initial = entries.slice(0, limit);
     
     if (initial.length === 0) {
-      ensureMinimumDelay(startedAt, 350).then(() => setLoading(false));
+      setLoading(false);
       return;
     }
+
+    setLoading(true);
     
     loadedIds.current = new Set();
 
