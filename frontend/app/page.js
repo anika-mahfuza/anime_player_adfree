@@ -287,6 +287,19 @@ function SearchBar() {
     setLoading(true);
     setOpen(true);
 
+    const renderSuggestions = (merged, keyPrefix) => {
+      const visibleResults = merged.results.slice(0, 8);
+      setResults(visibleResults);
+      setOpen(merged.results.length > 0 || term.trim().length > 0);
+      hydrateMediaWithAniZipEpisodeCounts(visibleResults, {
+        limit: 8,
+        keyPrefix,
+      }).then((hydrated) => {
+        if (suggestRunRef.current !== runId) return;
+        setResults(hydrated);
+      }).catch(() => {});
+    };
+
     try {
       const data = await anilistRequest(SUGGEST_QUERY, { s: queryInfo.canonical }, {
         cacheTtlMs: 45 * 1000,
@@ -295,55 +308,32 @@ function SearchBar() {
 
       const media = (data?.Page?.media || []).filter((item) => item.id || item.idMal);
       const uniqueMedia = Array.from(new Map(media.map((item, index) => [mediaIdentity(item, index), item])).values());
-
+      const merged = mergeAndRankMedia(queryInfo, uniqueMedia, []);
+      if (suggestRunRef.current !== runId) return;
+      renderSuggestions(merged, `home:suggest:episodes:anilist:${queryInfo.normalized}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[home-search] suggestions debug', {
+          ...merged.debug,
+          aniListOk: true,
+          jikanOk: 'skipped',
+        });
+      }
+    } catch (err) {
       const fallback = await searchJikanAnime(term, {
         limit: 8,
         key: `home:suggest:jikan:${queryInfo.normalized}`,
         cacheTtlMs: 45 * 1000,
-      });
-      const merged = mergeAndRankMedia(queryInfo, uniqueMedia, fallback.media || []);
+      }).catch(() => null);
       if (suggestRunRef.current !== runId) return;
-      setResults(merged.results.slice(0, 8));
-      setOpen(merged.results.length > 0 || term.trim().length > 0);
-      hydrateMediaWithAniZipEpisodeCounts(merged.results.slice(0, 8), {
-        limit: 8,
-        keyPrefix: `home:suggest:episodes:${queryInfo.normalized}`,
-      }).then((hydrated) => {
-        if (suggestRunRef.current !== runId) return;
-        setResults(hydrated);
-      }).catch(() => {});
-      if (process.env.NODE_ENV !== 'production') {
-        console.debug('[home-search] suggestions debug', merged.debug);
-      }
-
-    } catch (err) {
-      try {
-        const fallback = await searchJikanAnime(term, {
-          limit: 8,
-          key: `home:suggest:jikan:${queryInfo.normalized}`,
-          cacheTtlMs: 45 * 1000,
-        });
+      if (fallback) {
         const merged = mergeAndRankMedia(queryInfo, [], fallback.media || []);
-        if (suggestRunRef.current !== runId) return;
-        setResults(merged.results.slice(0, 8));
-        setOpen(merged.results.length > 0 || term.trim().length > 0);
-        hydrateMediaWithAniZipEpisodeCounts(merged.results.slice(0, 8), {
-          limit: 8,
-          keyPrefix: `home:suggest:episodes:fallback:${queryInfo.normalized}`,
-        }).then((hydrated) => {
-          if (suggestRunRef.current !== runId) return;
-          setResults(hydrated);
-        }).catch(() => {});
-        if (process.env.NODE_ENV !== 'production') {
-          console.debug('[home-search] fallback-only debug', merged.debug);
-        }
-
-      } catch (e) {
+        renderSuggestions(merged, `home:suggest:episodes:fallback:${queryInfo.normalized}`);
+      } else {
         setResults([]);
         setOpen(false);
       }
     } finally {
-      setLoading(false);
+      if (suggestRunRef.current === runId) setLoading(false);
     }
   }, []);
 

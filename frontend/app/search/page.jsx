@@ -46,60 +46,57 @@ function SearchInner() {
 
     setLoading(true);
     const startedAt = Date.now();
-    try {
-      // Try AniList first - if it works, use only AniList data
-      const data = await anilistRequest(SEARCH_QUERY, { s: queryInfo.canonical, page: 1 }, {
-        cacheTtlMs: 60 * 1000,
-        key: `search:${queryInfo.normalized}:1`,
-      });
-      const media = (data?.Page?.media || []).filter((item) => item.id || item.idMal);
-      const aniListResults = Array.from(
-        new Map(media.map((item, index) => [mediaIdentity(item, index), item])).values()
-      );
-      const aniListTotal = data?.Page?.pageInfo?.total ?? aniListResults.length;
 
-      // Use only AniList results (no Jikan fallback when AniList succeeds)
-      const merged = mergeAndRankMedia(queryInfo, aniListResults, []);
+    const renderResults = (merged, total, keyPrefix) => {
       setResults(merged.results);
-      setTotal(aniListTotal);
+      setTotal(Math.max(total || 0, merged.results.length));
       hydrateMediaWithAniZipEpisodeCounts(merged.results, {
         limit: 12,
-        keyPrefix: `search:episodes:${queryInfo.normalized}`,
+        keyPrefix,
       }).then((hydrated) => {
         if (searchRunRef.current !== runId) return;
         setResults(hydrated);
       }).catch(() => {});
+    };
+
+    try {
+      const data = await anilistRequest(SEARCH_QUERY, { s: queryInfo.canonical, page: 1 }, {
+        cacheTtlMs: 60 * 1000,
+        key: `search:${queryInfo.normalized}:1`,
+      });
+      const aniListMedia = (data?.Page?.media || []).filter((item) => item.id || item.idMal);
+      const aniListResults = Array.from(
+        new Map(aniListMedia.map((item, index) => [mediaIdentity(item, index), item])).values()
+      );
+      const aniListTotal = data?.Page?.pageInfo?.total ?? aniListResults.length;
+
+      const merged = mergeAndRankMedia(queryInfo, aniListResults, []);
+      if (searchRunRef.current !== runId) return;
+      renderResults(merged, aniListTotal, `search:episodes:anilist:${queryInfo.normalized}`);
       if (process.env.NODE_ENV !== 'production') {
-        console.debug('[search] AniList success', merged.debug);
+        console.debug('[search] provider results', {
+          ...merged.debug,
+          aniListOk: true,
+          jikanOk: 'skipped',
+        });
       }
     } catch {
-      // AniList failed - fallback to Jikan
-      try {
-        const fallback = await searchJikanAnime(term, {
-          page: 1,
-          limit: 24,
-          key: `search:jikan:${queryInfo.normalized}:1`,
-        });
+      const fallback = await searchJikanAnime(term, {
+        page: 1,
+        limit: 24,
+        key: `search:jikan:${queryInfo.normalized}:1`,
+      }).catch(() => null);
+      if (searchRunRef.current !== runId) return;
+      if (fallback) {
         const merged = mergeAndRankMedia(queryInfo, [], fallback.media || []);
-        setResults(merged.results);
-        setTotal(Math.max(fallback.total || 0, merged.results.length));
-        hydrateMediaWithAniZipEpisodeCounts(merged.results, {
-          limit: 12,
-          keyPrefix: `search:episodes:fallback:${queryInfo.normalized}`,
-        }).then((hydrated) => {
-          if (searchRunRef.current !== runId) return;
-          setResults(hydrated);
-        }).catch(() => {});
-        if (process.env.NODE_ENV !== 'production') {
-          console.debug('[search] Jikan fallback', merged.debug);
-        }
-      } catch {
+        renderResults(merged, fallback.total || 0, `search:episodes:fallback:${queryInfo.normalized}`);
+      } else {
         setResults([]);
         setTotal(0);
       }
     } finally {
       await ensureMinimumDelay(startedAt, 450);
-      setLoading(false);
+      if (searchRunRef.current === runId) setLoading(false);
     }
   }, []);
 
@@ -157,7 +154,7 @@ function SearchInner() {
         {query && (
           <div className="mb-8">
             <h2 className="mb-2 text-sm font-semibold text-[var(--color-ivory)]">
-              Results for "{query}"
+              Results for &quot;{query}&quot;
             </h2>
             <p className="text-sm text-[var(--color-muted)]">
               {total > 0 ? `${total}+ matches loaded` : 'No matches yet'} from the current catalogue feed.

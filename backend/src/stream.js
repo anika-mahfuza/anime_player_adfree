@@ -88,6 +88,12 @@ function parseSeasonMarker(value) {
   return null;
 }
 
+function parsePartNumber(title) {
+  if (!title) return null;
+  const m = String(title).match(/\bpart\s*(\d+)\b/i);
+  return m ? Number.parseInt(m[1], 10) : null;
+}
+
 function tokenSet(value) {
   return new Set(asciiWords(value).split(' ').filter((token) => token.length > 1));
 }
@@ -518,6 +524,7 @@ export async function handleServers({ req, res, url }) {
   const format = normalizeFormat(url.searchParams.get('format'));
   const totalEpisodes = Number.parseInt(url.searchParams.get('totalEpisodes') || '', 10) || null;
   const duration = Number.parseInt(url.searchParams.get('duration') || '', 10) || null;
+  const partOffset = Number.parseInt(url.searchParams.get('partOffset') || '', 10) || 0;
 
   if (!title) {
     return sendJson(res, 400, { error: 'Missing param: title' });
@@ -543,7 +550,29 @@ export async function handleServers({ req, res, url }) {
       throw new Error(`No matching series found for "${title}"`);
     }
 
-    const episodeSlug = series.episodeHref || buildFallbackEpisodeUrl(series.slug, episode);
+    // Part-offset resolution:
+    // When user queries Part 2+ but anitaku merged all parts into one series,
+    // we must offset the episode number so Part 2 ep 1 plays as ep 13, etc.
+    const requestedPart = parsePartNumber(title);
+    const matchedPart = parsePartNumber(series.title);
+    const isPartMismatch = requestedPart != null && requestedPart >= 2 && matchedPart !== requestedPart;
+
+    let resolvedOffset = partOffset; // trust frontend if provided
+    if (isPartMismatch && resolvedOffset === 0 && totalEpisodes && series.episodes) {
+      // Fallback: derive offset from anitaku merged total minus this part's count
+      // e.g. anitaku has 22 eps total, Part 2 has 10 eps → offset = 12
+      resolvedOffset = Math.max(0, series.episodes - totalEpisodes);
+    }
+
+    const anitakuEpisode = isPartMismatch && resolvedOffset > 0
+      ? episode + resolvedOffset
+      : episode;
+
+    const episodeSlug =
+      (anitakuEpisode === episode ? series.episodeHref : null) ||
+      series.episodeMap.get(anitakuEpisode) ||
+      buildFallbackEpisodeUrl(series.slug, anitakuEpisode);
+
     const pageHtml = await fetchText(`${anitakuBase}${episodeSlug}`);
     const hsub = extractServersByType(pageHtml, 'type_HSUB');
     const sub = extractServersByType(pageHtml, 'type_SUB');
@@ -560,7 +589,7 @@ export async function handleServers({ req, res, url }) {
       resolved: {
         slug: series.slug,
         title: series.title,
-        episode,
+        episode: anitakuEpisode,
       },
     });
   } catch (error) {
@@ -611,6 +640,7 @@ export async function handleStream({ req, res, url }) {
   const format = normalizeFormat(url.searchParams.get('format'));
   const totalEpisodes = Number.parseInt(url.searchParams.get('totalEpisodes') || '', 10) || null;
   const duration = Number.parseInt(url.searchParams.get('duration') || '', 10) || null;
+  const partOffset = Number.parseInt(url.searchParams.get('partOffset') || '', 10) || 0;
 
   if (!title) {
     return sendJson(res, 400, { error: 'Missing param: title (or embed)' });
@@ -637,7 +667,24 @@ export async function handleStream({ req, res, url }) {
       throw new Error(`No matching series found for "${title}"`);
     }
 
-    const episodeSlug = series.episodeHref || buildFallbackEpisodeUrl(series.slug, episode);
+    // Part-offset resolution (same logic as handleServers)
+    const requestedPart = parsePartNumber(title);
+    const matchedPart = parsePartNumber(series.title);
+    const isPartMismatch = requestedPart != null && requestedPart >= 2 && matchedPart !== requestedPart;
+
+    let resolvedOffset = partOffset;
+    if (isPartMismatch && resolvedOffset === 0 && totalEpisodes && series.episodes) {
+      resolvedOffset = Math.max(0, series.episodes - totalEpisodes);
+    }
+
+    const anitakuEpisode = isPartMismatch && resolvedOffset > 0
+      ? episode + resolvedOffset
+      : episode;
+
+    const episodeSlug =
+      (anitakuEpisode === episode ? series.episodeHref : null) ||
+      series.episodeMap.get(anitakuEpisode) ||
+      buildFallbackEpisodeUrl(series.slug, anitakuEpisode);
     const pageHtml = await fetchText(`${anitakuBase}${episodeSlug}`);
     const allServers = [
       ...extractServersByType(pageHtml, 'type_HSUB'),
@@ -680,7 +727,7 @@ export async function handleStream({ req, res, url }) {
       resolved: {
         slug: series.slug,
         title: series.title,
-        episode: episode,
+        episode: anitakuEpisode,
       },
     });
   } catch (error) {

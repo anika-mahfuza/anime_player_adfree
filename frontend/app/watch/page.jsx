@@ -190,6 +190,69 @@ async function fetchPreferredEpisodes({ anilistId, malId, fallbackCount, media }
   return limitEpisodesForMedia(buildFallbackEpisodes(fallbackCount), media);
 }
 
+function calculatePartOffset(anime) {
+  const titleStr = anime?.title?.english || anime?.title?.romaji || '';
+  const partMatch = titleStr.match(/\bpart\s*(\d+)\b/i);
+  if (!partMatch) return 0;
+  const currentPart = Number.parseInt(partMatch[1], 10);
+  if (currentPart <= 1) return 0;
+
+  const edges = anime?.relations?.edges || [];
+  // Base title with all part markers stripped, for fuzzy fallback matching
+  const baseTitle = titleStr
+    .replace(/\bpart\s*\d+\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+  let offset = 0;
+
+  for (let p = 1; p < currentPart; p++) {
+    const explicitRegex = new RegExp(`\\bpart\\s*${p}\\b`, 'i');
+    let partEps = 0;
+
+    // Pass 1: explicit "Part P" in relation title
+    for (const edge of edges) {
+      const node = edge?.node;
+      if (!node?.episodes) continue;
+      const relTitle = node?.title?.english || node?.title?.romaji || '';
+      if (explicitRegex.test(relTitle)) {
+        partEps = node.episodes;
+        break;
+      }
+    }
+
+    // Pass 2 (only for p=1): AniList sometimes names Part 1 without "Part 1"
+    // e.g. "Attack on Titan Season 3" is actually Part 1
+    // Match by base-title similarity among relations that have no/lower part number
+    if (!partEps && p === 1) {
+      for (const edge of edges) {
+        const node = edge?.node;
+        if (!node?.episodes) continue;
+        const relTitle = node?.title?.english || node?.title?.romaji || '';
+        const relPartMatch = relTitle.match(/\bpart\s*(\d+)\b/i);
+        // Skip relations that explicitly belong to a higher part
+        if (relPartMatch && Number.parseInt(relPartMatch[1], 10) >= currentPart) continue;
+        const relBase = relTitle
+          .replace(/\bpart\s*\d+\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+        // Require at least 8 chars to match at start
+        const cmpLen = Math.min(baseTitle.length, relBase.length);
+        if (cmpLen >= 8 && relBase.slice(0, cmpLen) === baseTitle.slice(0, cmpLen)) {
+          partEps = node.episodes;
+          break;
+        }
+      }
+    }
+
+    offset += partEps;
+  }
+
+  return offset;
+}
+
 async function fetchStreamUrl({
   titles,
   episode,
@@ -197,6 +260,7 @@ async function fetchStreamUrl({
   format,
   totalEpisodes,
   duration,
+  partOffset,
 }) {
   const [primaryTitle, ...restTitles] = titles;
   const altTitles = restTitles.join('|');
@@ -209,6 +273,7 @@ async function fetchStreamUrl({
   if (format) query.set('format', format);
   if (totalEpisodes) query.set('totalEpisodes', String(totalEpisodes));
   if (duration) query.set('duration', String(duration));
+  if (partOffset) query.set('partOffset', String(partOffset));
 
   const payload = await pacedJsonFetch(apiUrl(`/api/stream?${query.toString()}`), undefined, {
     key: `stream:${query.toString()}`,
@@ -225,6 +290,7 @@ async function fetchHdServers({
   format,
   totalEpisodes,
   duration,
+  partOffset,
 }) {
   const [primaryTitle, ...restTitles] = titles;
   const altTitles = restTitles.join('|');
@@ -237,6 +303,7 @@ async function fetchHdServers({
   if (format) query.set('format', format);
   if (totalEpisodes) query.set('totalEpisodes', String(totalEpisodes));
   if (duration) query.set('duration', String(duration));
+  if (partOffset) query.set('partOffset', String(partOffset));
 
   const payload = await pacedJsonFetch(apiUrl(`/api/servers?${query.toString()}`), undefined, {
     key: `servers:${query.toString()}`,
@@ -569,6 +636,7 @@ function WatchPageContent() {
           format: anime?.format,
           totalEpisodes: anime?.episodes,
           duration: anime?.duration,
+          partOffset: calculatePartOffset(anime),
         });
       }
 
@@ -679,6 +747,7 @@ function WatchPageContent() {
           format: anime?.format,
           totalEpisodes: anime?.episodes,
           duration: anime?.duration,
+          partOffset: calculatePartOffset(anime),
         });
 
         if (!isMounted.current) return;
