@@ -13,7 +13,7 @@
     "@remixicon/react": "^4.9.0",
     "artplayer": "^5.4.0",
     "hls.js": "1.5.20",
-    "hls16": "npm:hls.js@1.6.16",
+    "hls16": "npm:hls.js@1.6.5",
     "next": "16.2.3",
     "node-exports-info": "^1.6.0",
     "react": "19.2.4",
