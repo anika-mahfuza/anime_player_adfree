@@ -6,7 +6,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 import Artplayer from 'artplayer';
 
-import Hls from 'hls.js';
+import Hls15 from 'hls.js';
+
+import Hls16 from 'hls16';
 
 import {
 
@@ -705,6 +707,8 @@ export default function AnimePlayer({
           hlsRef.current?.destroy();
 
           hlsRef.current = null;
+
+          const Hls = aniwaveStreamsRef.current.length > 0 ? Hls15 : Hls16;
 
 
 
