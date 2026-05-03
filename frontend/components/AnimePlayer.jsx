@@ -1040,9 +1040,7 @@ export default function AnimePlayer({
 
         // Check if it's a valid subtitle URL (not a placeholder)
 
-        if (!subtitles[0].url.includes('cdn.cimovix.store') &&
-
-          subtitles[0].url.startsWith('http')) {
+        if (subtitles[0].url.startsWith('http')) {
 
           options.subtitle = {
 
