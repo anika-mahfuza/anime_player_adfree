@@ -109,20 +109,15 @@ export async function handleHlsProxy({ req, res, url }) {
 
       // Step 2: Rewrite ALL absolute URLs to proxy URLs (same approach as working test server)
       const rewritten = withAbsolute.replace(/https?:\/\/[^\s"'#]+/g, u => {
-        return buildProxyUrl(apiBase, u, referer, cookies, cacheToken);
+        const proxyUrl = buildProxyUrl(apiBase, u, referer, cookies, cacheToken);
+        console.log(`[hls] Rewriting URL: ${u} -> ${proxyUrl}`);
+        return proxyUrl;
       });
 
-      console.log(`[hls] Playlist rewritten: ${targetUrl.slice(0, 80)}...`);
-      console.log(`[hls] Sample output:\n${rewritten.slice(0, 600)}`);
-
-      const body = Buffer.from(rewritten);
-      applyCors(res, { 'Access-Control-Expose-Headers': exposedHeaders });
-      res.statusCode = 200;
+      console.log(`[hls] Returning playlist with ${rewritten.split('\n').filter(line => line.trim() && !line.trim().startsWith('#')).length} stream URLs`);
       res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-      res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('Content-Length', String(body.length));
-      res.end(body);
-      return;
+      res.setHeader('Cache-Control', 'no-cache');
+      return res.end(rewritten);
     }
 
     // Non-playlist: stream segments/keys directly

@@ -561,7 +561,6 @@ function WatchPageContent() {
       const cachedEpisodes = getCache(`watch-episodes-${id}`);
       if (cachedEpisodes && cachedEpisodes.length > 0) {
         setEpisodes(cachedEpisodes);
-        setMetaLoading(false); // Stop loading immediately if we have cache
         if (cachedEpisodes.length > 0) {
           setActiveEpisode((previous) => Math.min(previous, cachedEpisodes.length));
         }
@@ -589,6 +588,11 @@ function WatchPageContent() {
           setEpisodes(buildFallbackEpisodes(fallbackEpisodeCount));
         });
     };
+
+    // Ensure loading state is true during API calls
+    if (!metaLoading) {
+      setMetaLoading(true);
+    }
 
     anilistRequest(ANIME_QUERY, { id: anilistId }, {
       cacheTtlMs: 5 * 60 * 1000,
@@ -905,7 +909,7 @@ function WatchPageContent() {
     return <WatchPageSkeleton />;
   }
 
-  if (!anime) {
+  if (!anime && !metaLoading) {
     return (
       <main className="site-shell flex min-h-screen items-center justify-center px-4">
         <SurfacePanel className="flex items-center gap-2 px-6 py-5 text-sm text-[var(--color-muted)]">

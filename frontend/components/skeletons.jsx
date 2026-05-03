@@ -290,19 +290,33 @@ export function WatchPageSkeleton() {
       <section className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="grid gap-5 lg:gap-6 xl:grid-cols-[minmax(0,1.45fr)_24rem]">
           <div className="space-y-6">
-            <div>
-              <SkeletonBlock className="mb-4 block h-24 w-full sm:h-36" borderRadius={12} />
+            <SurfacePanel className="overflow-hidden p-3 sm:p-5">
+              {/* Banner skeleton */}
+              <SkeletonBlock className="mb-4 block h-24 w-full sm:h-36" borderRadius={18} />
+
+              {/* Source selector skeleton */}
+              <div className="mb-3 flex justify-end">
+                <div className="flex rounded-full border border-[rgba(196,160,96,0.24)] overflow-hidden">
+                  <SkeletonBlock className="block w-20 h-8" />
+                  <SkeletonBlock className="block w-20 h-8" />
+                </div>
+              </div>
+
+              {/* Video player skeleton */}
               <div className="relative overflow-hidden rounded-lg border border-white/8 bg-[var(--color-ink)]">
                 <SkeletonBlock className="block aspect-video w-full" borderRadius={12} />
               </div>
+
+              {/* Player controls skeleton */}
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <SkeletonBlock className="block w-32" height={42} borderRadius={999} />
                 <SkeletonBlock className="order-first block w-full sm:order-none sm:w-32" height={16} />
                 <SkeletonBlock className="block w-32" height={42} borderRadius={999} />
               </div>
-            </div>
+            </SurfacePanel>
 
-            <div className="rounded-lg border border-white/8 bg-white/5 p-4 sm:p-5">
+            {/* Episode details skeleton */}
+            <SurfacePanel className="p-4 sm:p-5">
               <div className="grid gap-4 sm:grid-cols-[8rem_minmax(0,1fr)]">
                 <SkeletonBlock className="mx-auto block h-48 w-32 sm:mx-0" borderRadius={8} />
                 <div>
@@ -317,11 +331,11 @@ export function WatchPageSkeleton() {
                   <SkeletonBlock className="block max-w-[32rem]" height={16} />
                 </div>
               </div>
-            </div>
+            </SurfacePanel>
           </div>
 
           <div className="space-y-6">
-            <div>
+            <SurfacePanel className="p-4 sm:p-5">
               <SkeletonBlock className="mb-3 block max-w-[8rem]" height={14} />
               <SkeletonBlock className="mb-3 block w-full" height={36} borderRadius={8} />
               <div className="space-y-1.5">
@@ -329,16 +343,16 @@ export function WatchPageSkeleton() {
                   <SkeletonBlock key={index} className="block" height={48} borderRadius={8} />
                 ))}
               </div>
-            </div>
+            </SurfacePanel>
 
-            <div>
+            <SurfacePanel className="p-4 sm:p-5">
               <SkeletonBlock className="mb-3 block max-w-[8rem]" height={14} />
               <div className="space-y-1.5">
                 {Array.from({ length: 4 }).map((_, index) => (
                   <SkeletonBlock key={index} className="block" height={52} borderRadius={8} />
                 ))}
               </div>
-            </div>
+            </SurfacePanel>
           </div>
         </div>
       </section>
