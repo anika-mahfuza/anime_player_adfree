@@ -54,22 +54,36 @@ export async function handleHlsProxy({ req, res, url }) {
   const looksLikePlaylist = /(\.m3u8|playlist|master)/i.test(targetUrl);
 
   try {
-    const response = await fetchWithTimeout(
-      targetUrl,
-      {
-        headers: {
-          'User-Agent': userAgent,
-          Referer: referer,
-          Origin: 'https://kwik.cx',
-          ...(req.headers.range ? { Range: req.headers.range } : {}),
-          ...(cookies ? { Cookie: cookies } : {}),
-        },
-      },
-      looksLikePlaylist ? 15000 : 30000,
-    );
+    console.log(`[hls] Fetching: ${targetUrl}`);
+    console.log(`[hls] Referer: ${referer}`);
+    
+    // Try with standard headers first
+    let headers = {
+      'User-Agent': userAgent,
+      Referer: referer,
+      Origin: 'https://kwik.cx',
+      ...(req.headers.range ? { Range: req.headers.range } : {}),
+      ...(cookies ? { Cookie: cookies } : {}),
+    };
+
+    let response = await fetchWithTimeout(targetUrl, { headers }, looksLikePlaylist ? 15000 : 30000);
+
+    // If first attempt fails, try with minimal headers
+    if (!response.ok && response.status === 403) {
+      console.log(`[hls] First attempt failed, trying with minimal headers`);
+      headers = {
+        'User-Agent': userAgent,
+        ...(cookies ? { Cookie: cookies } : {}),
+      };
+      response = await fetchWithTimeout(targetUrl, { headers }, looksLikePlaylist ? 15000 : 30000);
+    }
+
+    console.log(`[hls] Response status: ${response.status}`);
 
     if (!response.ok) {
-      throw new Error(`Upstream returned ${response.status}`);
+      const errorText = await response.text();
+      console.error(`[hls] Upstream error body:`, errorText);
+      throw new Error(`Upstream returned ${response.status}: ${errorText.slice(0, 200)}`);
     }
 
     const contentType = response.headers.get('content-type') || '';

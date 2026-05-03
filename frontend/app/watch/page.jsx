@@ -416,6 +416,12 @@ export default function WatchPage() {
 
 function WatchPageContent() {
   const searchParams = useSearchParams();
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
   const id = searchParams.get('id');
   const requestedEpisode = Math.max(0, Number.parseInt(searchParams.get('ep') || '', 10) || 0);
   const requestedTime = Math.max(0, Number.parseInt(searchParams.get('t') || '', 10) || 0);
@@ -890,15 +896,9 @@ function WatchPageContent() {
 
   const watchSequence = useMemo(() => getWatchSequence(anime, anime?.relations), [anime]);
 
-  if (!id) {
-    return (
-      <main className="site-shell flex min-h-screen items-center justify-center px-4">
-        <SurfacePanel className="flex items-center gap-2 px-6 py-5 text-sm text-[var(--color-muted)]">
-          <RiAlertLine size={18} className="text-[var(--color-brass)]" />
-          Missing anime id.
-        </SurfacePanel>
-      </main>
-    );
+  // Prevent SSR hydration mismatch - searchParams is empty on server
+  if (!mounted || !id) {
+    return <WatchPageSkeleton />;
   }
 
   if (metaLoading) {

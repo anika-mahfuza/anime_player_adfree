@@ -118,14 +118,8 @@ async function unpackKwikStream(kwikUrl) {
   return null;
 }
 
-// ── Quality key mapping ──
-
-const QUALITY_MAP = {
-  'Kiwi-Stream-1080p': '1080p',
-  'Kiwi-Stream-720p': '720p',
-  'Kiwi-Stream-480p': '480p',
-  'Kiwi-Stream-360p': '360p',
-};
+// ── Dynamic quality detection ──
+const resolutionRegex = /^Kiwi-Stream-(\d+p)$/;
 
 // ── API handler ──
 
@@ -149,8 +143,12 @@ export async function handleAniwaveStream({ req, res, url }) {
     let intro = { start: 0, end: 0 };
     let outro = { start: 0, end: 0 };
 
-    for (const [qKey, qLabel] of Object.entries(QUALITY_MAP)) {
-      const linkId = mapper[qKey]?.[lang]?.url ?? null;
+    for (const [qKey, qData] of Object.entries(mapper)) {
+      const match = qKey.match(resolutionRegex);
+      if (!match) continue;                 // skip 'Kiwi-Stream' (downloads), status, etc.
+
+      const label = match[1];               // e.g. "804p"
+      const linkId = qData?.[lang]?.url ?? null;
       if (!linkId) continue;
 
       try {
@@ -174,14 +172,14 @@ export async function handleAniwaveStream({ req, res, url }) {
         }
 
         streams.push({
-          quality: qLabel,
+          quality: label,
           url: proxiedUrl,
           rawUrl: kwikData.m3u8,
           referer: kwikReferer,
           cookies: kwikData.cookies || '',
         });
       } catch (error) {
-        console.warn(`[aniwave] Quality ${qLabel} failed:`, error.message);
+        console.warn(`[aniwave] Quality ${label} failed:`, error.message);
       }
     }
 

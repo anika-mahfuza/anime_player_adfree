@@ -323,11 +323,27 @@ export default function AnimePlayer({
     stopCountdown();
     hlsRef.current?.destroy();
     hlsRef.current = null;
-    artRef.current?.destroy(false);
+    if (artRef.current && typeof artRef.current.destroy === 'function') {
+      artRef.current.destroy(false);
+    }
     artRef.current = null;
+
+    // Clear the DOM element completely
+    if (containerRef.current) {
+      containerRef.current.innerHTML = '';
+    }
 
     if (!containerRef.current || !url) return;
 
+    // Validate URL format to prevent Artplayer fetch errors
+    try {
+      new URL(url);
+    } catch (e) {
+      console.error('[Player] Invalid URL provided:', url, e);
+      return;
+    }
+
+    
     const options = {
       container: containerRef.current,
       url,
@@ -494,23 +510,48 @@ export default function AnimePlayer({
       moreVideoAttr: { crossOrigin: 'anonymous' },
     };
 
-    if (subtitles?.length > 0) {
-      options.subtitle = {
-        url: subtitles[0].url,
-        type: 'vtt',
-        escape: false,
-        style: {
-          color: '#ffffff',
-          fontSize: '28px',
-          textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0px 0px 6px #000000',
-        },
-        encoding: 'utf-8',
-      };
+    // Only enable subtitles if there's a valid URL
+    if (subtitles?.length > 0 && subtitles[0]?.url) {
+      try {
+        // Validate subtitle URL format
+        new URL(subtitles[0].url);
+        
+        // Check if it's a valid subtitle URL (not a placeholder)
+        if (!subtitles[0].url.includes('cdn.cimovix.store') && 
+            subtitles[0].url.startsWith('http')) {
+          options.subtitle = {
+            url: subtitles[0].url,
+            type: 'vtt',
+            escape: false,
+            style: {
+              color: '#ffffff',
+              fontSize: '28px',
+              textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0px 0px 6px #000000',
+            },
+            encoding: 'utf-8',
+          };
+        }
+      } catch (e) {
+        // Invalid subtitle URL, skip subtitles gracefully
+        console.warn('[Player] Invalid subtitle URL, skipping subtitles:', subtitles[0]?.url);
+      }
     }
 
-    const art = new Artplayer(options);
+    // Create Artplayer instance directly
+    let art;
+    try {
+      art = new Artplayer(options);
+    } catch (error) {
+      console.error('[Player] Artplayer initialization failed:', error);
+      return;
+    }
 
     artRef.current = art;
+    
+    // Add error handling for Artplayer events
+    art.on('error', (error) => {
+      console.error('[Player] Artplayer error:', error);
+    });
 
     // Keep native ArtPlayer volume UI but force it into a horizontal, touch-friendly mode.
     const volumeControl = art.template.query('.art-control-volume');
@@ -689,6 +730,17 @@ export default function AnimePlayer({
       hlsRef.current = null;
       artRef.current?.destroy(false);
       artRef.current = null;
+    };
+
+    // Cleanup function for the useEffect
+    return () => {
+      stopCountdown();
+      if (artRef.current && typeof artRef.current.destroy === 'function') {
+        artRef.current.destroy(false);
+      }
+      artRef.current = null;
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, subtitles]); // only url and subtitles — callbacks are stable refs
